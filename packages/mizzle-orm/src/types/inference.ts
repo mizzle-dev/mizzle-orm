@@ -37,7 +37,8 @@ type IsOptional<T extends AnyFieldBuilder> = T extends { _configState: { optiona
 
 /**
  * Helper to check if a field has a default value
- * Now checks the type-level _configState for hasDefault or hasDefaultNow
+ * Now checks the type-level _configState for hasDefault, hasDefaultNow, or isSoftDeleteFlag
+ * Soft delete flags implicitly default to null when creating records
  */
 type HasDefault<T extends AnyFieldBuilder> = T extends {
   _configState: { hasDefault: true };
@@ -45,7 +46,9 @@ type HasDefault<T extends AnyFieldBuilder> = T extends {
   ? true
   : T extends { _configState: { hasDefaultNow: true } }
     ? true
-    : false;
+    : T extends { _configState: { isSoftDeleteFlag: true } }
+      ? true
+      : false;
 
 /**
  * Helper to check if a field is auto-generated (like _id or publicId)
