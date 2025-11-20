@@ -2,7 +2,7 @@
  * ORM configuration and context types
  */
 
-import type { MongoClient, ClientSession, ObjectId } from 'mongodb';
+import type { MongoClient, ClientSession, ObjectId, Filter } from 'mongodb';
 import type { CollectionDefinition, RelationTargets } from './collection';
 import type { WithPopulated, WithPopulatedMany } from './relations-inference';
 import type { IncludeConfig, WithIncluded } from './include';
@@ -123,33 +123,33 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any, TRel
     options: QueryOptions<TRelationTargets> & { include: TInclude },
   ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets> | null>;
 
-  findOne(filter: Record<string, any>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc | null>;
+  findOne(filter: Filter<TDoc>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc | null>;
   findOne<TInclude extends IncludeConfig<TRelationTargets>>(
-    filter: Record<string, any>,
+    filter: Filter<TDoc>,
     options: QueryOptions<TRelationTargets> & { include: TInclude },
   ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets> | null>;
 
-  findMany(filter?: Record<string, any>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc[]>;
+  findMany(filter?: Filter<TDoc>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc[]>;
   findMany<TInclude extends IncludeConfig<TRelationTargets>>(
-    filter: Record<string, any> | undefined,
+    filter: Filter<TDoc> | undefined,
     options: QueryOptions<TRelationTargets> & { include: TInclude },
   ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets>[]>;
 
   // Mutations
   create(data: TInsert): Promise<TDoc>;
   updateById(id: string | ObjectId, data: TUpdate): Promise<TDoc | null>;
-  updateOne(filter: Record<string, any>, data: TUpdate): Promise<TDoc | null>;
-  updateMany(filter: Record<string, any>, data: TUpdate): Promise<number>;
+  updateOne(filter: Filter<TDoc>, data: TUpdate): Promise<TDoc | null>;
+  updateMany(filter: Filter<TDoc>, data: TUpdate): Promise<number>;
   deleteById(id: string | ObjectId): Promise<boolean>;
-  deleteOne(filter: Record<string, any>): Promise<boolean>;
-  deleteMany(filter: Record<string, any>): Promise<number>;
+  deleteOne(filter: Filter<TDoc>): Promise<boolean>;
+  deleteMany(filter: Filter<TDoc>): Promise<number>;
 
   // Soft delete
   softDelete(id: string | ObjectId): Promise<TDoc | null>;
   restore(id: string | ObjectId): Promise<TDoc | null>;
 
   // Aggregation
-  count(filter?: Record<string, any>): Promise<number>;
+  count(filter?: Filter<TDoc>): Promise<number>;
   aggregate(pipeline: any[]): Promise<any[]>;
 
   // Relations

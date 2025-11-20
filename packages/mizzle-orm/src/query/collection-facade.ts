@@ -46,7 +46,7 @@ export class CollectionFacade<
    */
   async findById(id: string | ObjectId, options?: QueryOptions<TRelationTargets>): Promise<any> {
     const filter = this.buildIdFilter(id);
-    return this.findOne(filter as Filter<TDoc>, options as any);
+    return this.findOne(filter, options as any);
   }
 
   /**
@@ -202,7 +202,7 @@ export class CollectionFacade<
    */
   async updateById(id: string | ObjectId, data: TUpdate): Promise<TDoc | null> {
     const filter = this.buildIdFilter(id);
-    return this.updateOne(filter as Filter<TDoc>, data);
+    return this.updateOne(filter, data);
   }
 
   /**
@@ -288,7 +288,7 @@ export class CollectionFacade<
    */
   async deleteById(id: string | ObjectId): Promise<boolean> {
     const filter = this.buildIdFilter(id);
-    return this.deleteOne(filter as Filter<TDoc>);
+    return this.deleteOne(filter);
   }
 
   /**
@@ -450,25 +450,25 @@ export class CollectionFacade<
   /**
    * Build filter for ID lookup (supports both _id and publicId)
    */
-  private buildIdFilter(id: string | ObjectId): Record<string, unknown> {
+  private buildIdFilter(id: string | ObjectId): Filter<TDoc> {
     if (id instanceof ObjectId) {
-      return { _id: id };
+      return { _id: id } as Filter<TDoc>;
     }
 
     // Check if it looks like a public ID (has underscore)
     if (typeof id === 'string' && id.includes('_')) {
       const publicIdField = this.getPublicIdField();
       if (publicIdField) {
-        return { [publicIdField]: id };
+        return { [publicIdField]: id } as Filter<TDoc>;
       }
     }
 
     // Try to parse as ObjectId
     try {
-      return { _id: new ObjectId(id) };
+      return { _id: new ObjectId(id) } as Filter<TDoc>;
     } catch {
       // If not a valid ObjectId, treat as string _id
-      return { _id: id };
+      return { _id: id } as Filter<TDoc>;
     }
   }
 
@@ -482,7 +482,7 @@ export class CollectionFacade<
     if (policies.readFilter) {
       const policyFilter = policies.readFilter(this.ctx);
       return {
-        $and: [filter, policyFilter] as any[],
+        $and: [filter, policyFilter],
       } as Filter<TDoc>;
     }
 
