@@ -124,8 +124,10 @@ export type TypedRelation<
  * Extract relation targets from a typed relations object
  */
 export type ExtractRelationTargets<TRelations> = {
-  [K in keyof TRelations]: TRelations[K] extends TypedRelation<any, infer TTarget>
-    ? TTarget
+  [K in keyof TRelations]: TRelations[K] extends { readonly _targetCollection?: infer TTarget }
+    ? TTarget extends CollectionDefinition<any, any>
+      ? TTarget
+      : never
     : never;
 };
 

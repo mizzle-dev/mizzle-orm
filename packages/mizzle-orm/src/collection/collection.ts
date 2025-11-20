@@ -18,33 +18,27 @@ import type { SchemaDefinition } from '../types/field';
 import { createRelationBuilder } from './builders';
 
 /**
- * Define a MongoDB collection with schema and metadata
- *
- * @param name - Collection name
- * @param schema - Schema definition object
- * @param options - Optional collection configuration
- * @returns Collection definition
- *
- * @example
- * ```ts
- * import { objectId, publicId, string, date } from 'mizzle-orm';
- *
- * const users = mongoCollection(
- *   'users',
- *   {
- *     _id: objectId().internalId(),
- *     id: publicId('user'),
- *     email: string().email().unique(),
- *     displayName: string(),
- *     createdAt: date().defaultNow(),
- *   },
- *   {
- *     policies: {
- *       readFilter: (ctx) => ({ orgId: ctx.tenantId }),
- *     },
- *   }
- * );
- * ```
+ * Define a MongoDB collection without relations
+ */
+export function mongoCollection<TSchema extends SchemaDefinition>(
+  name: string,
+  schema: TSchema,
+): CollectionDefinition<TSchema, {}>;
+
+/**
+ * Define a MongoDB collection with options (including relations)
+ */
+export function mongoCollection<
+  TSchema extends SchemaDefinition,
+  TRels extends Record<string, TypedRelation<any, any>>,
+>(
+  name: string,
+  schema: TSchema,
+  options: CollectionOptions<TSchema, TRels>,
+): CollectionDefinition<TSchema, ExtractRelationTargets<TRels>>;
+
+/**
+ * Implementation
  */
 export function mongoCollection<
   TSchema extends SchemaDefinition,
