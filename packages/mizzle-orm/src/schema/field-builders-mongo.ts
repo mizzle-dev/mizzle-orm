@@ -12,31 +12,37 @@ import type {
   JsonFieldBuilder as IJsonFieldBuilder,
   GeoPointFieldBuilder as IGeoPointFieldBuilder,
 } from '../types/field';
+import type { FieldConfigState, EmptyConfig } from '../types/field-config';
 import { FieldBuilder } from './field-builder-base';
 
 /**
  * ObjectId field builder
  */
-export class ObjectIdFieldBuilder
-  extends FieldBuilder<ObjectId, ObjectIdFieldBuilder>
-  implements IObjectIdFieldBuilder
+export class ObjectIdFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<ObjectId, TConfig, ObjectIdFieldBuilder<TConfig>>
+  implements IObjectIdFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.OBJECT_ID);
   }
 
-  internalId(): ObjectIdFieldBuilder {
-    this._config.isInternalId = true;
-    return this;
+  internalId(): ObjectIdFieldBuilder<TConfig & { isInternalId: true }> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      isInternalId: true,
+    }) as any;
   }
 }
 
 /**
  * Public ID field builder (prefixed IDs)
+ * By default, public IDs are auto-generated
  */
-export class PublicIdFieldBuilder
-  extends FieldBuilder<string, PublicIdFieldBuilder>
-  implements IPublicIdFieldBuilder
+export class PublicIdFieldBuilder<
+    TConfig extends FieldConfigState = EmptyConfig & { isPublicId: true },
+  >
+  extends FieldBuilder<string, TConfig, PublicIdFieldBuilder<TConfig>>
+  implements IPublicIdFieldBuilder<TConfig>
 {
   readonly _prefix: string;
 
@@ -52,9 +58,9 @@ export class PublicIdFieldBuilder
 /**
  * Decimal128 field builder
  */
-export class DecimalFieldBuilder
-  extends FieldBuilder<Decimal128, DecimalFieldBuilder>
-  implements IDecimalFieldBuilder
+export class DecimalFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<Decimal128, TConfig, DecimalFieldBuilder<TConfig>>
+  implements IDecimalFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.DECIMAL);
@@ -64,9 +70,9 @@ export class DecimalFieldBuilder
 /**
  * Binary field builder
  */
-export class BinaryFieldBuilder
-  extends FieldBuilder<Binary, BinaryFieldBuilder>
-  implements IBinaryFieldBuilder
+export class BinaryFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<Binary, TConfig, BinaryFieldBuilder<TConfig>>
+  implements IBinaryFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.BINARY);
@@ -76,9 +82,9 @@ export class BinaryFieldBuilder
 /**
  * JSON field builder (arbitrary JSON data)
  */
-export class JsonFieldBuilder<T = unknown>
-  extends FieldBuilder<T, JsonFieldBuilder<T>>
-  implements IJsonFieldBuilder<T>
+export class JsonFieldBuilder<T = unknown, TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<T, TConfig, JsonFieldBuilder<T, TConfig>>
+  implements IJsonFieldBuilder<T, TConfig>
 {
   constructor() {
     super(FieldType.JSON);
@@ -88,9 +94,13 @@ export class JsonFieldBuilder<T = unknown>
 /**
  * GeoPoint field builder (GeoJSON Point)
  */
-export class GeoPointFieldBuilder
-  extends FieldBuilder<{ type: 'Point'; coordinates: [number, number] }, GeoPointFieldBuilder>
-  implements IGeoPointFieldBuilder
+export class GeoPointFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<
+    { type: 'Point'; coordinates: [number, number] },
+    TConfig,
+    GeoPointFieldBuilder<TConfig>
+  >
+  implements IGeoPointFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.GEO_POINT);

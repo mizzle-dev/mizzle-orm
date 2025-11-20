@@ -149,7 +149,9 @@ export interface BaseFieldBuilder<TType, TConfig extends FieldConfigState, TSelf
   nullable(): BaseFieldBuilder<TType | null, TConfig & { nullable: true }, TSelf>;
 
   // Default values
-  default(value: DefaultValue<TType>): BaseFieldBuilder<TType, TConfig & { hasDefault: true }, TSelf>;
+  default(
+    value: DefaultValue<TType>,
+  ): BaseFieldBuilder<TType, TConfig & { hasDefault: true }, TSelf>;
 
   // Indexing
   index(config?: Omit<IndexConfig, 'type'>): TSelf;
@@ -224,8 +226,7 @@ export interface ObjectIdFieldBuilder<TConfig extends FieldConfigState = EmptyCo
  */
 export interface PublicIdFieldBuilder<
   TConfig extends FieldConfigState = EmptyConfig & { isPublicId: true },
->
-  extends BaseFieldBuilder<string, TConfig, PublicIdFieldBuilder<TConfig>> {
+> extends BaseFieldBuilder<string, TConfig, PublicIdFieldBuilder<TConfig>> {
   readonly _prefix: string;
 }
 
@@ -271,8 +272,7 @@ export interface EnumFieldBuilder<T extends string, TConfig extends FieldConfigS
 export interface ArrayFieldBuilder<
   TItem extends AnyFieldBuilder,
   TConfig extends FieldConfigState = EmptyConfig,
->
-  extends BaseFieldBuilder<
+> extends BaseFieldBuilder<
     InferFieldBuilderType<TItem>[],
     TConfig,
     ArrayFieldBuilder<TItem, TConfig>
@@ -289,8 +289,7 @@ export interface RecordFieldBuilder<
   TKey extends StringFieldBuilder<any> | NumberFieldBuilder<any>,
   TValue extends AnyFieldBuilder,
   TConfig extends FieldConfigState = EmptyConfig,
->
-  extends BaseFieldBuilder<
+> extends BaseFieldBuilder<
     Record<InferFieldBuilderType<TKey>, InferFieldBuilderType<TValue>>,
     TConfig,
     RecordFieldBuilder<TKey, TValue, TConfig>
@@ -305,8 +304,7 @@ export interface RecordFieldBuilder<
 export interface UnionFieldBuilder<
   TVariants extends AnyFieldBuilder[],
   TConfig extends FieldConfigState = EmptyConfig,
->
-  extends BaseFieldBuilder<
+> extends BaseFieldBuilder<
     InferFieldBuilderType<TVariants[number]>,
     TConfig,
     UnionFieldBuilder<TVariants, TConfig>
@@ -337,7 +335,8 @@ export type AnyFieldBuilder =
 /**
  * Infer the TypeScript type from a field builder
  */
-export type InferFieldBuilderType<T> = T extends BaseFieldBuilder<infer TType, any> ? TType : never;
+export type InferFieldBuilderType<T> =
+  T extends BaseFieldBuilder<infer TType, any, any> ? TType : never;
 
 /**
  * Schema definition (map of field name to field builder)

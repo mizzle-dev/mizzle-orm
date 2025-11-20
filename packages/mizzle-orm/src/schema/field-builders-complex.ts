@@ -12,14 +12,18 @@ import type {
   NumberFieldBuilder,
   InferFieldBuilderType,
 } from '../types/field';
+import type { FieldConfigState, EmptyConfig } from '../types/field-config';
 import { FieldBuilder } from './field-builder-base';
 
 /**
  * Array field builder
  */
-export class ArrayFieldBuilder<TItem extends AnyFieldBuilder>
-  extends FieldBuilder<InferFieldBuilderType<TItem>[], ArrayFieldBuilder<TItem>>
-  implements IArrayFieldBuilder<TItem>
+export class ArrayFieldBuilder<
+    TItem extends AnyFieldBuilder,
+    TConfig extends FieldConfigState = EmptyConfig,
+  >
+  extends FieldBuilder<InferFieldBuilderType<TItem>[], TConfig, ArrayFieldBuilder<TItem, TConfig>>
+  implements IArrayFieldBuilder<TItem, TConfig>
 {
   readonly _item: TItem;
 
@@ -32,12 +36,12 @@ export class ArrayFieldBuilder<TItem extends AnyFieldBuilder>
     this._item = itemField;
   }
 
-  min(length: number): ArrayFieldBuilder<TItem> {
+  min(length: number): ArrayFieldBuilder<TItem, TConfig> {
     this._config.arrayConfig = { ...this._config.arrayConfig, min: length };
     return this;
   }
 
-  max(length: number): ArrayFieldBuilder<TItem> {
+  max(length: number): ArrayFieldBuilder<TItem, TConfig> {
     this._config.arrayConfig = { ...this._config.arrayConfig, max: length };
     return this;
   }
@@ -47,14 +51,16 @@ export class ArrayFieldBuilder<TItem extends AnyFieldBuilder>
  * Record/Map field builder
  */
 export class RecordFieldBuilder<
-    TKey extends StringFieldBuilder | NumberFieldBuilder,
+    TKey extends StringFieldBuilder<any> | NumberFieldBuilder<any>,
     TValue extends AnyFieldBuilder,
+    TConfig extends FieldConfigState = EmptyConfig,
   >
   extends FieldBuilder<
     Record<InferFieldBuilderType<TKey>, InferFieldBuilderType<TValue>>,
-    RecordFieldBuilder<TKey, TValue>
+    TConfig,
+    RecordFieldBuilder<TKey, TValue, TConfig>
   >
-  implements IRecordFieldBuilder<TKey, TValue>
+  implements IRecordFieldBuilder<TKey, TValue, TConfig>
 {
   readonly _key: TKey;
   readonly _value: TValue;
@@ -74,9 +80,16 @@ export class RecordFieldBuilder<
 /**
  * Union field builder
  */
-export class UnionFieldBuilder<TVariants extends AnyFieldBuilder[]>
-  extends FieldBuilder<InferFieldBuilderType<TVariants[number]>, UnionFieldBuilder<TVariants>>
-  implements IUnionFieldBuilder<TVariants>
+export class UnionFieldBuilder<
+    TVariants extends AnyFieldBuilder[],
+    TConfig extends FieldConfigState = EmptyConfig,
+  >
+  extends FieldBuilder<
+    InferFieldBuilderType<TVariants[number]>,
+    TConfig,
+    UnionFieldBuilder<TVariants, TConfig>
+  >
+  implements IUnionFieldBuilder<TVariants, TConfig>
 {
   readonly _variants: TVariants;
 

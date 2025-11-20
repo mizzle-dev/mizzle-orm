@@ -10,14 +10,15 @@ import type {
   DateFieldBuilder as IDateFieldBuilder,
   EnumFieldBuilder as IEnumFieldBuilder,
 } from '../types/field';
+import type { FieldConfigState, EmptyConfig } from '../types/field-config';
 import { FieldBuilder } from './field-builder-base';
 
 /**
  * String field builder
  */
-export class StringFieldBuilder
-  extends FieldBuilder<string, StringFieldBuilder>
-  implements IStringFieldBuilder
+export class StringFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<string, TConfig, StringFieldBuilder<TConfig>>
+  implements IStringFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.STRING, {
@@ -25,17 +26,17 @@ export class StringFieldBuilder
     });
   }
 
-  min(length: number): StringFieldBuilder {
+  min(length: number): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, min: length };
     return this;
   }
 
-  max(length: number): StringFieldBuilder {
+  max(length: number): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, max: length };
     return this;
   }
 
-  length(length: number): StringFieldBuilder {
+  length(length: number): StringFieldBuilder<TConfig> {
     this._config.stringConfig = {
       ...this._config.stringConfig,
       min: length,
@@ -44,27 +45,27 @@ export class StringFieldBuilder
     return this;
   }
 
-  pattern(regex: RegExp): StringFieldBuilder {
+  pattern(regex: RegExp): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, pattern: regex };
     return this;
   }
 
-  email(): StringFieldBuilder {
+  email(): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, email: true };
     return this;
   }
 
-  url(): StringFieldBuilder {
+  url(): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, url: true };
     return this;
   }
 
-  uuid(): StringFieldBuilder {
+  uuid(): StringFieldBuilder<TConfig> {
     this._config.stringConfig = { ...this._config.stringConfig, uuid: true };
     return this;
   }
 
-  enum<T extends readonly string[]>(values: T): EnumFieldBuilder<T[number]> {
+  enum<T extends readonly string[]>(values: T): EnumFieldBuilder<T[number], TConfig> {
     return new EnumFieldBuilder(values);
   }
 }
@@ -72,9 +73,9 @@ export class StringFieldBuilder
 /**
  * Number field builder
  */
-export class NumberFieldBuilder
-  extends FieldBuilder<number, NumberFieldBuilder>
-  implements INumberFieldBuilder
+export class NumberFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<number, TConfig, NumberFieldBuilder<TConfig>>
+  implements INumberFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.NUMBER, {
@@ -82,22 +83,22 @@ export class NumberFieldBuilder
     });
   }
 
-  min(value: number): NumberFieldBuilder {
+  min(value: number): NumberFieldBuilder<TConfig> {
     this._config.numberConfig = { ...this._config.numberConfig, min: value };
     return this;
   }
 
-  max(value: number): NumberFieldBuilder {
+  max(value: number): NumberFieldBuilder<TConfig> {
     this._config.numberConfig = { ...this._config.numberConfig, max: value };
     return this;
   }
 
-  int(): NumberFieldBuilder {
+  int(): NumberFieldBuilder<TConfig> {
     this._config.numberConfig = { ...this._config.numberConfig, int: true };
     return this;
   }
 
-  positive(): NumberFieldBuilder {
+  positive(): NumberFieldBuilder<TConfig> {
     this._config.numberConfig = { ...this._config.numberConfig, positive: true };
     return this;
   }
@@ -106,9 +107,9 @@ export class NumberFieldBuilder
 /**
  * Boolean field builder
  */
-export class BooleanFieldBuilder
-  extends FieldBuilder<boolean, BooleanFieldBuilder>
-  implements IBooleanFieldBuilder
+export class BooleanFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<boolean, TConfig, BooleanFieldBuilder<TConfig>>
+  implements IBooleanFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.BOOLEAN);
@@ -118,31 +119,35 @@ export class BooleanFieldBuilder
 /**
  * Date field builder
  */
-export class DateFieldBuilder
-  extends FieldBuilder<Date, DateFieldBuilder>
-  implements IDateFieldBuilder
+export class DateFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<Date, TConfig, DateFieldBuilder<TConfig>>
+  implements IDateFieldBuilder<TConfig>
 {
   constructor() {
     super(FieldType.DATE);
   }
 
-  defaultNow(): DateFieldBuilder {
-    this._config.defaultNow = true;
-    this._config.defaultValue = () => new Date();
-    return this;
+  defaultNow(): DateFieldBuilder<TConfig & { hasDefaultNow: true; hasDefault: true }> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      defaultNow: true,
+      defaultValue: () => new Date(),
+    }) as any;
   }
 
-  onUpdateNow(): DateFieldBuilder {
-    this._config.onUpdateNow = true;
-    return this;
+  onUpdateNow(): DateFieldBuilder<TConfig & { hasOnUpdateNow: true }> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      onUpdateNow: true,
+    }) as any;
   }
 
-  min(_date: Date): DateFieldBuilder {
+  min(_date: Date): DateFieldBuilder<TConfig> {
     // Store in config for validation (to be implemented)
     return this;
   }
 
-  max(_date: Date): DateFieldBuilder {
+  max(_date: Date): DateFieldBuilder<TConfig> {
     // Store in config for validation (to be implemented)
     return this;
   }
@@ -151,9 +156,9 @@ export class DateFieldBuilder
 /**
  * Enum field builder
  */
-export class EnumFieldBuilder<T extends string>
-  extends FieldBuilder<T, EnumFieldBuilder<T>>
-  implements IEnumFieldBuilder<T>
+export class EnumFieldBuilder<T extends string, TConfig extends FieldConfigState = EmptyConfig>
+  extends FieldBuilder<T, TConfig, EnumFieldBuilder<T, TConfig>>
+  implements IEnumFieldBuilder<T, TConfig>
 {
   readonly _values: readonly T[];
 

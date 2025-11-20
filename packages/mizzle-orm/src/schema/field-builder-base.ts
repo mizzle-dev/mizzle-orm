@@ -11,14 +11,23 @@ import type {
   AuditConfig,
   DefaultValue,
 } from '../types/field';
+import type { FieldConfigState } from '../types/field-config';
 
 /**
  * Base field builder class with chainable methods
+ *
+ * @template TType - The TypeScript type this field produces
+ * @template TConfig - The type-level configuration state
+ * @template TSelf - The concrete builder type for method chaining
  */
-export class FieldBuilder<TType, TSelf extends FieldBuilder<TType, TSelf>>
-  implements BaseFieldBuilder<TType, TSelf>
+export class FieldBuilder<
+  TType,
+  TConfig extends FieldConfigState,
+  TSelf extends FieldBuilder<TType, TConfig, TSelf>,
+> implements BaseFieldBuilder<TType, TConfig, TSelf>
 {
   readonly _type!: TType;
+  readonly _configState!: TConfig; // Phantom type, never assigned
   readonly _config: FieldConfig<TType>;
 
   constructor(type: FieldType, config: Partial<FieldConfig<TType>> = {}) {
@@ -33,7 +42,7 @@ export class FieldBuilder<TType, TSelf extends FieldBuilder<TType, TSelf>>
   /**
    * Make this field optional (can be undefined)
    */
-  optional(): BaseFieldBuilder<TType | undefined, TSelf> {
+  optional(): BaseFieldBuilder<TType | undefined, TConfig & { optional: true }, TSelf> {
     return new FieldBuilder(this._config.type, {
       ...this._config,
       optional: true,
@@ -43,7 +52,7 @@ export class FieldBuilder<TType, TSelf extends FieldBuilder<TType, TSelf>>
   /**
    * Make this field nullable (can be null)
    */
-  nullable(): BaseFieldBuilder<TType | null, TSelf> {
+  nullable(): BaseFieldBuilder<TType | null, TConfig & { nullable: true }, TSelf> {
     return new FieldBuilder(this._config.type, {
       ...this._config,
       nullable: true,
@@ -53,9 +62,13 @@ export class FieldBuilder<TType, TSelf extends FieldBuilder<TType, TSelf>>
   /**
    * Set a default value for this field
    */
-  default(value: DefaultValue<TType>): TSelf {
-    this._config.defaultValue = value;
-    return this as unknown as TSelf;
+  default(
+    value: DefaultValue<TType>,
+  ): BaseFieldBuilder<TType, TConfig & { hasDefault: true }, TSelf> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      defaultValue: value,
+    }) as any;
   }
 
   /**
@@ -100,24 +113,30 @@ export class FieldBuilder<TType, TSelf extends FieldBuilder<TType, TSelf>>
   /**
    * Mark this field as a tenant key (for multi-tenancy)
    */
-  tenantKey(): TSelf {
-    this._config.isTenantKey = true;
-    return this as unknown as TSelf;
+  tenantKey(): BaseFieldBuilder<TType, TConfig & { isTenantKey: true }, TSelf> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      isTenantKey: true,
+    }) as any;
   }
 
   /**
    * Mark this field as an owner key (for ownership tracking)
    */
-  ownerKey(): TSelf {
-    this._config.isOwnerKey = true;
-    return this as unknown as TSelf;
+  ownerKey(): BaseFieldBuilder<TType, TConfig & { isOwnerKey: true }, TSelf> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      isOwnerKey: true,
+    }) as any;
   }
 
   /**
    * Mark this field as a soft delete flag
    */
-  softDeleteFlag(): TSelf {
-    this._config.isSoftDeleteFlag = true;
-    return this as unknown as TSelf;
+  softDeleteFlag(): BaseFieldBuilder<TType, TConfig & { isSoftDeleteFlag: true }, TSelf> {
+    return new FieldBuilder(this._config.type, {
+      ...this._config,
+      isSoftDeleteFlag: true,
+    }) as any;
   }
 }

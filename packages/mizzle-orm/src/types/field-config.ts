@@ -55,14 +55,9 @@ export interface FieldConfigState {
 /**
  * Default empty configuration state
  * Represents a field with no special configuration
+ * All properties in FieldConfigState are optional, so an empty object satisfies the constraint
  */
-export type EmptyConfig = {
-  readonly optional: false;
-  readonly nullable: false;
-  readonly hasDefault: false;
-  readonly hasDefaultNow: false;
-  readonly hasOnUpdateNow: false;
-};
+export type EmptyConfig = {};
 
 /**
  * Merge two configuration states
