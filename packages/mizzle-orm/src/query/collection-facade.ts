@@ -6,7 +6,6 @@ import { Collection, ObjectId, type Db, type Document, type Filter } from 'mongo
 import type { CollectionDefinition, RelationTargets } from '../types/collection';
 import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
-import type { WithPopulated, WithPopulatedMany } from '../types/relations-inference';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -379,63 +378,6 @@ export class CollectionFacade<
         session: this.ctx.session,
       })
       .toArray();
-  }
-
-  /**
-   * Populate relations on documents
-   */
-  /**
-   * Populate a single relation field
-   */
-  async populate<TRelationName extends keyof TRelationTargets & string>(
-    docs: TDoc[],
-    relationName: TRelationName,
-  ): Promise<WithPopulated<TDoc, TRelationName, TRelationTargets>[]>;
-
-  /**
-   * Populate multiple relation fields using rest parameters
-   */
-  async populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2], TRelationTargets>[]>;
-
-  async populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-    TRel3 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-    rel3: TRel3,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3], TRelationTargets>[]>;
-
-  async populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-    TRel3 extends keyof TRelationTargets & string,
-    TRel4 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-    rel3: TRel3,
-    rel4: TRel4,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3, TRel4], TRelationTargets>[]>;
-
-  /**
-   * Implementation
-   */
-  async populate(docs: TDoc[], ...relationNames: string[]): Promise<any> {
-    if (relationNames.length === 1) {
-      return this.relationHelper.populate(docs, relationNames[0]!);
-    }
-    return this.relationHelper.populate(docs, relationNames);
   }
 
   /**
