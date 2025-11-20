@@ -9,6 +9,8 @@ import type {
   ReferenceRelation,
   EmbedRelation,
   LookupRelation,
+  TypedRelation,
+  RelationTargets,
 } from '../types/collection';
 import { RelationType } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
@@ -83,37 +85,37 @@ export function createIndexBuilder<TSchema extends SchemaDefinition>(_schema: TS
  * Relation builder implementation
  */
 class RelationBuilderImpl<TSchema extends SchemaDefinition> implements IRelationBuilder<TSchema> {
-  reference<TOther extends SchemaDefinition>(
-    otherCollection: CollectionDefinition<TOther>,
+  reference<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    otherCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<ReferenceRelation, 'type' | 'targetCollection'>,
-  ): ReferenceRelation {
+  ): TypedRelation<ReferenceRelation, CollectionDefinition<TOther, TTargets>> {
     return {
       type: RelationType.REFERENCE,
       targetCollection: otherCollection._meta.name,
       ...config,
-    };
+    } as any; // Runtime object is ReferenceRelation, type system sees TypedRelation
   }
 
-  embed<TOther extends SchemaDefinition>(
-    sourceCollection: CollectionDefinition<TOther>,
+  embed<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    sourceCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<EmbedRelation, 'type' | 'sourceCollection'>,
-  ): EmbedRelation {
+  ): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>> {
     return {
       type: RelationType.EMBED,
       sourceCollection: sourceCollection._meta.name,
       ...config,
-    };
+    } as any; // Runtime object is EmbedRelation, type system sees TypedRelation
   }
 
-  lookup<TOther extends SchemaDefinition>(
-    targetCollection: CollectionDefinition<TOther>,
+  lookup<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    targetCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<LookupRelation, 'type' | 'targetCollection'>,
-  ): LookupRelation {
+  ): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>> {
     return {
       type: RelationType.LOOKUP,
       targetCollection: targetCollection._meta.name,
       ...config,
-    };
+    } as any; // Runtime object is LookupRelation, type system sees TypedRelation
   }
 }
 

@@ -109,23 +109,44 @@ export type AnyRelation = ReferenceRelation | EmbedRelation | LookupRelation;
 export type Relations = Record<string, AnyRelation>;
 
 /**
+ * Typed relation that preserves target collection information
+ * At runtime, this is just the base relation object.
+ * At type-level, it tracks the target collection for type inference.
+ */
+export type TypedRelation<
+  TRel extends AnyRelation,
+  TTarget extends CollectionDefinition<any, any>,
+> = TRel & {
+  readonly _targetCollection?: TTarget; // Phantom type for tracking target (never exists at runtime)
+};
+
+/**
+ * Extract relation targets from a typed relations object
+ */
+export type ExtractRelationTargets<TRelations> = {
+  [K in keyof TRelations]: TRelations[K] extends TypedRelation<any, infer TTarget>
+    ? TTarget
+    : never;
+};
+
+/**
  * Relation builder
  */
 export interface RelationBuilder<_TSchema extends SchemaDefinition = SchemaDefinition> {
-  reference<TOther extends SchemaDefinition>(
-    otherCollection: CollectionDefinition<TOther>,
+  reference<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    otherCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<ReferenceRelation, 'type' | 'targetCollection'>,
-  ): ReferenceRelation;
+  ): TypedRelation<ReferenceRelation, CollectionDefinition<TOther, TTargets>>;
 
-  embed<TOther extends SchemaDefinition>(
-    sourceCollection: CollectionDefinition<TOther>,
+  embed<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    sourceCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<EmbedRelation, 'type' | 'sourceCollection'>,
-  ): EmbedRelation;
+  ): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>>;
 
-  lookup<TOther extends SchemaDefinition>(
-    targetCollection: CollectionDefinition<TOther>,
+  lookup<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+    targetCollection: CollectionDefinition<TOther, TTargets>,
     config: Omit<LookupRelation, 'type' | 'targetCollection'>,
-  ): LookupRelation;
+  ): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>>;
 }
 
 /**
@@ -238,14 +259,20 @@ export interface CollectionAuditConfig {
 
 /**
  * Collection options (the second argument to mongoCollection)
+ *
+ * @template TSchema - The schema definition
+ * @template TRels - The typed relations object returned by the relations callback
  */
-export interface CollectionOptions<TSchema extends SchemaDefinition> {
+export interface CollectionOptions<
+  TSchema extends SchemaDefinition,
+  TRels extends Record<string, TypedRelation<any, any>> = {},
+> {
   indexes?: IndexDefinitionFn<TSchema>;
   searchIndexes?: any; // TODO: Atlas Search index definitions
   relations?: (
     r: RelationBuilder<TSchema>,
-    collections: Record<string, CollectionDefinition<any>>,
-  ) => Relations;
+    collections: Record<string, CollectionDefinition<any, any>>,
+  ) => TRels;
   policies?: PolicyConfig<TSchema>;
   audit?: CollectionAuditConfig;
   hooks?: Hooks<TSchema>;
@@ -266,11 +293,23 @@ export interface CollectionMeta<TSchema extends SchemaDefinition = SchemaDefinit
 }
 
 /**
- * Collection definition (what mongoCollection returns)
+ * Relation targets map - maps relation name to target collection
  */
-export interface CollectionDefinition<TSchema extends SchemaDefinition = SchemaDefinition> {
+export type RelationTargets = Record<string, CollectionDefinition<any, any>>;
+
+/**
+ * Collection definition (what mongoCollection returns)
+ *
+ * @template TSchema - The schema definition for this collection's fields
+ * @template TRelationTargets - Map of relation names to their target collections
+ */
+export interface CollectionDefinition<
+  TSchema extends SchemaDefinition = SchemaDefinition,
+  TRelationTargets extends RelationTargets = {},
+> {
   readonly _schema: TSchema;
   readonly _meta: CollectionMeta<TSchema>;
+  readonly _relationTargets: TRelationTargets; // Phantom type for relation target tracking
   readonly _brand: 'CollectionDefinition';
 
   // Type helpers

@@ -11,6 +11,8 @@ import type {
   PolicyConfig,
   Hooks,
   CollectionAuditConfig,
+  TypedRelation,
+  ExtractRelationTargets,
 } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
 import { createRelationBuilder } from './builders';
@@ -44,11 +46,14 @@ import { createRelationBuilder } from './builders';
  * );
  * ```
  */
-export function mongoCollection<TSchema extends SchemaDefinition>(
+export function mongoCollection<
+  TSchema extends SchemaDefinition,
+  TRels extends Record<string, TypedRelation<any, any>> = {},
+>(
   name: string,
   schema: TSchema,
-  options: CollectionOptions<TSchema> = {},
-): CollectionDefinition<TSchema> {
+  options: CollectionOptions<TSchema, TRels> = {} as any,
+): CollectionDefinition<TSchema, ExtractRelationTargets<TRels>> {
   // Build indexes
   const indexes: IndexDef[] = [];
   if (options.indexes) {
@@ -80,7 +85,9 @@ export function mongoCollection<TSchema extends SchemaDefinition>(
   let relations: Relations = {};
   if (options.relations) {
     const relationBuilder = createRelationBuilder<TSchema>();
-    relations = options.relations(relationBuilder, {} as any);
+    // Get typed relations from callback, but store as runtime Relations
+    const typedRelations = options.relations(relationBuilder, {} as any);
+    relations = typedRelations as any as Relations;
   }
 
   // Policies (plain object)
@@ -110,9 +117,10 @@ export function mongoCollection<TSchema extends SchemaDefinition>(
   };
 
   // Create collection definition
-  const definition: CollectionDefinition<TSchema> = {
+  const definition: CollectionDefinition<TSchema, ExtractRelationTargets<TRels>> = {
     _schema: schema,
     _meta: meta,
+    _relationTargets: null as any, // Phantom type, never accessed at runtime
     _brand: 'CollectionDefinition',
     $inferDocument: null as any,
     $inferInsert: null as any,

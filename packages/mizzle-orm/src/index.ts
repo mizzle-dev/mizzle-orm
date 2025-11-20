@@ -43,6 +43,8 @@ export type { CollectionDefinition, CollectionMeta } from './types/collection';
 
 export type { OrmContext, OrmConfig, MongoOrm } from './types/orm';
 
+export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/include';
+
 // Validation
 export {
   generateDocumentSchema,
