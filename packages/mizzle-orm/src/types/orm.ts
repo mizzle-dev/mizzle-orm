@@ -86,10 +86,10 @@ export interface DevGuardrailsConfig {
 /**
  * ORM configuration
  */
-export interface OrmConfig {
+export interface OrmConfig<TCollections extends Record<string, CollectionDefinition<any>> = Record<string, CollectionDefinition<any>>> {
   uri: string;
   dbName: string;
-  collections: CollectionDefinition[];
+  collections: TCollections;
 
   middlewares?: OrmMiddleware[];
   validation?: ValidationConfig;
@@ -125,6 +125,9 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any> {
   // Aggregation
   count(filter?: Record<string, any>): Promise<number>;
   aggregate(pipeline: any[]): Promise<any[]>;
+
+  // Relations
+  populate(docs: TDoc[], relationName: string | string[]): Promise<TDoc[]>;
 
   // Raw access
   rawCollection(): any;

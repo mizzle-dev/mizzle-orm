@@ -4,6 +4,7 @@
 
 import {
   createMongoOrm,
+  defineCollections,
   mongoCollection,
   objectId,
   publicId,
@@ -12,7 +13,6 @@ import {
   date,
   array,
 } from '../src/index';
-import type { InferDocument, InferInsert } from '../src/index';
 
 // Define collections
 const users = mongoCollection(
@@ -85,9 +85,6 @@ const projects = mongoCollection(
   },
 );
 
-// Types
-type User = InferDocument<typeof users>;
-type NewUser = InferInsert<typeof users>;
 
 /**
  * Example usage
@@ -97,10 +94,11 @@ async function main() {
   const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 
   // Create ORM instance
+  const collections = defineCollections({ users, projects });
   const orm = await createMongoOrm({
     uri: MONGO_URI,
     dbName: 'mizzle_example',
-    collections: [users, projects],
+    collections,
   });
 
   console.log('✓ Connected to MongoDB');
@@ -121,14 +119,14 @@ async function main() {
   // ========== CREATE ==========
   console.log('\n--- CREATE ---');
 
-  const newUser: NewUser = {
+  const alice = await db.users.create({
+    // TypeScript note: id, _id, createdAt, updatedAt, deletedAt, isActive, role
+    // are automatically generated or have defaults, so they're optional here
     orgId: ctx.tenantIdObjectId!,
     email: 'alice@example.com',
     displayName: 'Alice Smith',
     tags: ['developer', 'typescript'],
-  };
-
-  const alice = await db.users.create(newUser);
+  });
   console.log('Created user:', alice.id, alice.email);
 
   const bob = await db.users.create({
@@ -173,7 +171,10 @@ async function main() {
     tags: ['developer', 'typescript', 'mongodb'],
   });
   console.log('Updated user:', updatedAlice?.displayName);
-  console.log('Updated timestamp changed:', updatedAlice?.updatedAt > alice.updatedAt);
+  console.log(
+    'Updated timestamp changed:',
+    updatedAlice?.updatedAt && updatedAlice.updatedAt > alice.updatedAt
+  );
 
   // Update many
   const updated = await db.users.updateMany({ role: 'user' }, { isActive: true });

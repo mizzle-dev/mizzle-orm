@@ -4,7 +4,7 @@
  */
 
 // Core exports
-export { createMongoOrm } from './orm/orm';
+export { createMongoOrm, defineCollections } from './orm/orm';
 export { mongoCollection } from './collection/collection';
 
 // Field factory functions

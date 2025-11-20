@@ -10,6 +10,26 @@ import { nanoid } from 'nanoid';
 import { CollectionFacade } from '../query/collection-facade';
 
 /**
+ * Helper function to create properly typed collections object.
+ * This preserves exact types for perfect type inference.
+ *
+ * @example
+ * ```ts
+ * const collections = defineCollections({ users, posts });
+ * const orm = await createMongoOrm({
+ *   uri: process.env.MONGO_URI!,
+ *   dbName: 'myapp',
+ *   collections,
+ * });
+ * ```
+ */
+export function defineCollections<T extends Record<string, CollectionDefinition<any>>>(
+  collections: T,
+): T {
+  return collections;
+}
+
+/**
  * Create a Mizzle ORM instance
  *
  * @param config - ORM configuration
@@ -28,9 +48,9 @@ import { CollectionFacade } from '../query/collection-facade';
  * const user = await db.users.findOne({ email: 'alice@example.com' });
  * ```
  */
-export async function createMongoOrm<TCollections extends CollectionDefinition[]>(
-  config: OrmConfig & { collections: TCollections },
-): Promise<MongoOrm<CollectionsToRecord<TCollections>>> {
+export async function createMongoOrm<TCollections extends Record<string, CollectionDefinition<any>>>(
+  config: OrmConfig<TCollections>,
+): Promise<MongoOrm<TCollections>> {
   // Connect to MongoDB
   const client = new MongoClient(config.uri, config.clientOptions);
   await client.connect();
@@ -38,17 +58,14 @@ export async function createMongoOrm<TCollections extends CollectionDefinition[]
   // Get database instance
   const db = client.db(config.dbName);
 
-  // Build collection registry
+  // Build collection registry from the collections object
   const collectionRegistry = new Map<string, CollectionDefinition>();
-  for (const collectionDef of config.collections) {
+  for (const [_, collectionDef] of Object.entries(config.collections)) {
     collectionRegistry.set(collectionDef._meta.name, collectionDef);
   }
 
-  // Build collections object for type-safe access
-  const collections = {} as CollectionsToRecord<TCollections>;
-  for (const collectionDef of config.collections) {
-    (collections as any)[collectionDef._meta.name] = collectionDef;
-  }
+  // Collections are already in the right format
+  const collections = config.collections;
 
   /**
    * Create a context object
@@ -81,7 +98,7 @@ export async function createMongoOrm<TCollections extends CollectionDefinition[]
   /**
    * Get a context-bound database facade
    */
-  function withContext(ctx: OrmContext): DbFacade<CollectionsToRecord<TCollections>> {
+  function withContext(ctx: OrmContext): DbFacade<TCollections> {
     // Create a proxy that dynamically creates collection facades
     return new Proxy({} as any, {
       get(_target, collectionName: string) {
@@ -93,7 +110,7 @@ export async function createMongoOrm<TCollections extends CollectionDefinition[]
         // Create and return a CollectionFacade for this collection
         return new CollectionFacade(db, collectionDef, ctx);
       },
-    }) as DbFacade<CollectionsToRecord<TCollections>>;
+    }) as DbFacade<TCollections>;
   }
 
   /**
@@ -138,9 +155,3 @@ export async function createMongoOrm<TCollections extends CollectionDefinition[]
   };
 }
 
-/**
- * Helper type to convert array of collection definitions to a record
- */
-type CollectionsToRecord<T extends CollectionDefinition[]> = {
-  [K in T[number]['_meta']['name']]: Extract<T[number], { _meta: { name: K } }>;
-};

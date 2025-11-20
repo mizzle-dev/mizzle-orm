@@ -53,14 +53,22 @@ export async function clearTestDb(): Promise<void> {
 
 /**
  * Create a test ORM instance with given collections
+ * Accepts an array and converts it to an object keyed by collection name
  */
 export async function createTestOrm<T extends CollectionDefinition<any>[]>(
   collections: T,
 ): Promise<MongoOrm<any>> {
   const { uri } = await setupTestDb();
+
+  // Convert array of collections to object keyed by collection name
+  const collectionsObj: Record<string, CollectionDefinition<any>> = {};
+  for (const coll of collections) {
+    collectionsObj[coll._meta.name] = coll;
+  }
+
   return createMongoOrm({
     uri,
     dbName: 'test',
-    collections: collections as any,
+    collections: collectionsObj,
   });
 }

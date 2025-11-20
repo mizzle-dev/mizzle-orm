@@ -93,7 +93,8 @@ export interface LookupRelation {
   targetCollection: string;
   localField: string;
   foreignField: string;
-  as: string;
+  as?: string; // Optional - defaults to relation name
+  one?: boolean; // If true, populate single document; otherwise array
   pipeline?: Document[];
 }
 

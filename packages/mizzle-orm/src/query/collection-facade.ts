@@ -7,6 +7,7 @@ import type { CollectionDefinition } from '../types/collection';
 import type { OrmContext } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
 import { generatePublicId } from '../utils/public-id';
+import { RelationHelper } from './relations';
 
 /**
  * Collection facade providing CRUD operations
@@ -19,11 +20,13 @@ export class CollectionFacade<
   private collection: Collection<TDoc>;
   private collectionDef: CollectionDefinition<SchemaDefinition>;
   private ctx: OrmContext;
+  private relationHelper: RelationHelper<TDoc>;
 
   constructor(db: Db, collectionDef: CollectionDefinition<SchemaDefinition>, ctx: OrmContext) {
     this.collection = db.collection<TDoc>(collectionDef._meta.name);
     this.collectionDef = collectionDef;
     this.ctx = ctx;
+    this.relationHelper = new RelationHelper<TDoc>(db, collectionDef, ctx);
   }
 
   /**
@@ -105,6 +108,9 @@ export class CollectionFacade<
       }
     }
 
+    // Validate references
+    await this.relationHelper.validateReferences(finalDoc as any);
+
     // Insert
     const result = await this.collection.insertOne(finalDoc as any, {
       session: this.ctx.session,
@@ -169,6 +175,9 @@ export class CollectionFacade<
         throw new Error('Update not allowed by policy');
       }
     }
+
+    // Validate references
+    await this.relationHelper.validateReferences(finalUpdate as any);
 
     // Update
     const result = await this.collection.findOneAndUpdate(
@@ -302,6 +311,16 @@ export class CollectionFacade<
         session: this.ctx.session,
       })
       .toArray();
+  }
+
+  /**
+   * Populate relations on documents
+   */
+  async populate(
+    docs: TDoc[],
+    relationName: string | string[],
+  ): Promise<TDoc[]> {
+    return this.relationHelper.populate(docs, relationName);
   }
 
   /**
