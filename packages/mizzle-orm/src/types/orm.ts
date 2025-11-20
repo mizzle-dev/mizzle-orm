@@ -2,8 +2,10 @@
  * ORM configuration and context types
  */
 
-import type { MongoClient, ClientSession, ObjectId } from 'mongodb';
-import type { CollectionDefinition } from './collection';
+import type { MongoClient, ClientSession, ObjectId, Filter } from 'mongodb';
+import type { CollectionDefinition, RelationTargets } from './collection';
+import type { WithPopulated, WithPopulatedMany } from './relations-inference';
+import type { IncludeConfig, WithIncluded } from './include';
 
 /**
  * User context for RLS and audit
@@ -101,33 +103,93 @@ export interface OrmConfig<TCollections extends Record<string, CollectionDefinit
 }
 
 /**
+ * Query options for find operations
+ */
+export interface QueryOptions<TRelationTargets extends RelationTargets = {}> {
+  sort?: Record<string, 1 | -1>;
+  limit?: number;
+  skip?: number;
+  include?: IncludeConfig<TRelationTargets>;
+}
+
+/**
  * Collection facade for type-safe operations
  */
-export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any> {
+export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any, TRelationTargets extends RelationTargets = {}> {
   // Basic queries
-  findById(id: string | ObjectId): Promise<TDoc | null>;
-  findOne(filter: Record<string, any>): Promise<TDoc | null>;
-  findMany(filter?: Record<string, any>, options?: any): Promise<TDoc[]>;
+  findById(id: string | ObjectId, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc | null>;
+  findById<TInclude extends IncludeConfig<TRelationTargets>>(
+    id: string | ObjectId,
+    options: QueryOptions<TRelationTargets> & { include: TInclude },
+  ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets> | null>;
+
+  findOne(filter: Filter<TDoc>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc | null>;
+  findOne<TInclude extends IncludeConfig<TRelationTargets>>(
+    filter: Filter<TDoc>,
+    options: QueryOptions<TRelationTargets> & { include: TInclude },
+  ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets> | null>;
+
+  findMany(filter?: Filter<TDoc>, options?: Omit<QueryOptions<TRelationTargets>, 'include'>): Promise<TDoc[]>;
+  findMany<TInclude extends IncludeConfig<TRelationTargets>>(
+    filter: Filter<TDoc> | undefined,
+    options: QueryOptions<TRelationTargets> & { include: TInclude },
+  ): Promise<WithIncluded<TDoc, TInclude, TRelationTargets>[]>;
 
   // Mutations
   create(data: TInsert): Promise<TDoc>;
   updateById(id: string | ObjectId, data: TUpdate): Promise<TDoc | null>;
-  updateOne(filter: Record<string, any>, data: TUpdate): Promise<TDoc | null>;
-  updateMany(filter: Record<string, any>, data: TUpdate): Promise<number>;
+  updateOne(filter: Filter<TDoc>, data: TUpdate): Promise<TDoc | null>;
+  updateMany(filter: Filter<TDoc>, data: TUpdate): Promise<number>;
   deleteById(id: string | ObjectId): Promise<boolean>;
-  deleteOne(filter: Record<string, any>): Promise<boolean>;
-  deleteMany(filter: Record<string, any>): Promise<number>;
+  deleteOne(filter: Filter<TDoc>): Promise<boolean>;
+  deleteMany(filter: Filter<TDoc>): Promise<number>;
 
   // Soft delete
   softDelete(id: string | ObjectId): Promise<TDoc | null>;
   restore(id: string | ObjectId): Promise<TDoc | null>;
 
   // Aggregation
-  count(filter?: Record<string, any>): Promise<number>;
+  count(filter?: Filter<TDoc>): Promise<number>;
   aggregate(pipeline: any[]): Promise<any[]>;
 
   // Relations
-  populate(docs: TDoc[], relationName: string | string[]): Promise<TDoc[]>;
+  populate<TRelationName extends keyof TRelationTargets & string>(
+    docs: TDoc[],
+    relationName: TRelationName,
+  ): Promise<WithPopulated<TDoc, TRelationName, TRelationTargets>[]>;
+
+  populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2], TRelationTargets>[]>;
+
+  populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+    TRel3 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+    rel3: TRel3,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3], TRelationTargets>[]>;
+
+  populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+    TRel3 extends keyof TRelationTargets & string,
+    TRel4 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+    rel3: TRel3,
+    rel4: TRel4,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3, TRel4], TRelationTargets>[]>;
 
   // Raw access
   rawCollection(): any;
@@ -136,12 +198,15 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any> {
 /**
  * Database facade with dynamic collection accessors
  */
-export type DbFacade<TCollections extends Record<string, CollectionDefinition>> = {
-  [K in keyof TCollections]: CollectionFacade<
-    TCollections[K]['$inferDocument'],
-    TCollections[K]['$inferInsert'],
-    TCollections[K]['$inferUpdate']
-  >;
+export type DbFacade<TCollections extends Record<string, CollectionDefinition<any, any>>> = {
+  [K in keyof TCollections]: TCollections[K] extends CollectionDefinition<any, infer TRelationTargets>
+    ? CollectionFacade<
+        TCollections[K]['$inferDocument'],
+        TCollections[K]['$inferInsert'],
+        TCollections[K]['$inferUpdate'],
+        TRelationTargets
+      >
+    : never;
 };
 
 /**

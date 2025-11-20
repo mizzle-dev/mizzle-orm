@@ -11,44 +11,43 @@ import type {
   PolicyConfig,
   Hooks,
   CollectionAuditConfig,
+  TypedRelation,
+  ExtractRelationTargets,
 } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
 import { createRelationBuilder } from './builders';
 
 /**
- * Define a MongoDB collection with schema and metadata
- *
- * @param name - Collection name
- * @param schema - Schema definition object
- * @param options - Optional collection configuration
- * @returns Collection definition
- *
- * @example
- * ```ts
- * import { objectId, publicId, string, date } from 'mizzle-orm';
- *
- * const users = mongoCollection(
- *   'users',
- *   {
- *     _id: objectId().internalId(),
- *     id: publicId('user'),
- *     email: string().email().unique(),
- *     displayName: string(),
- *     createdAt: date().defaultNow(),
- *   },
- *   {
- *     policies: {
- *       readFilter: (ctx) => ({ orgId: ctx.tenantId }),
- *     },
- *   }
- * );
- * ```
+ * Define a MongoDB collection without relations
  */
 export function mongoCollection<TSchema extends SchemaDefinition>(
   name: string,
   schema: TSchema,
-  options: CollectionOptions<TSchema> = {},
-): CollectionDefinition<TSchema> {
+): CollectionDefinition<TSchema, {}>;
+
+/**
+ * Define a MongoDB collection with options (including relations)
+ */
+export function mongoCollection<
+  TSchema extends SchemaDefinition,
+  TRels extends Record<string, TypedRelation<any, any>>,
+>(
+  name: string,
+  schema: TSchema,
+  options: CollectionOptions<TSchema, TRels>,
+): CollectionDefinition<TSchema, ExtractRelationTargets<TRels>>;
+
+/**
+ * Implementation
+ */
+export function mongoCollection<
+  TSchema extends SchemaDefinition,
+  TRels extends Record<string, TypedRelation<any, any>> = {},
+>(
+  name: string,
+  schema: TSchema,
+  options: CollectionOptions<TSchema, TRels> = {} as any,
+): CollectionDefinition<TSchema, ExtractRelationTargets<TRels>> {
   // Build indexes
   const indexes: IndexDef[] = [];
   if (options.indexes) {
@@ -80,7 +79,9 @@ export function mongoCollection<TSchema extends SchemaDefinition>(
   let relations: Relations = {};
   if (options.relations) {
     const relationBuilder = createRelationBuilder<TSchema>();
-    relations = options.relations(relationBuilder, {} as any);
+    // Get typed relations from callback, but store as runtime Relations
+    const typedRelations = options.relations(relationBuilder, {} as any);
+    relations = typedRelations as any as Relations;
   }
 
   // Policies (plain object)
@@ -110,9 +111,10 @@ export function mongoCollection<TSchema extends SchemaDefinition>(
   };
 
   // Create collection definition
-  const definition: CollectionDefinition<TSchema> = {
+  const definition: CollectionDefinition<TSchema, ExtractRelationTargets<TRels>> = {
     _schema: schema,
     _meta: meta,
+    _relationTargets: null as any, // Phantom type, never accessed at runtime
     _brand: 'CollectionDefinition',
     $inferDocument: null as any,
     $inferInsert: null as any,

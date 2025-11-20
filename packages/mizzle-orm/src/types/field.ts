@@ -3,6 +3,7 @@
  */
 
 import type { ObjectId, Decimal128, Binary } from 'mongodb';
+import type { FieldConfigState, EmptyConfig } from './field-config';
 // import type { z } from 'zod'; // Will be used for validation later
 
 /**
@@ -130,17 +131,27 @@ export interface FieldConfig<TType = unknown> {
 
 /**
  * Base field builder interface with chainable methods
+ *
+ * @template TType - The TypeScript type this field produces
+ * @template TConfig - The type-level configuration state (NEW)
+ * @template TSelf - The concrete builder type for method chaining
+ *
+ * The TConfig parameter encodes the field's configuration state at the type level,
+ * allowing TypeScript to properly infer which fields are required for insert.
  */
-export interface BaseFieldBuilder<TType, TSelf> {
+export interface BaseFieldBuilder<TType, TConfig extends FieldConfigState, TSelf> {
   readonly _type: TType;
-  readonly _config: FieldConfig<TType>;
+  readonly _configState: TConfig; // Type-level config (phantom type)
+  readonly _config: FieldConfig<TType>; // Runtime config
 
   // Nullability
-  optional(): BaseFieldBuilder<TType | undefined, TSelf>;
-  nullable(): BaseFieldBuilder<TType | null, TSelf>;
+  optional(): BaseFieldBuilder<TType | undefined, TConfig & { optional: true }, TSelf>;
+  nullable(): BaseFieldBuilder<TType | null, TConfig & { nullable: true }, TSelf>;
 
   // Default values
-  default(value: DefaultValue<TType>): TSelf;
+  default(
+    value: DefaultValue<TType>,
+  ): BaseFieldBuilder<TType, TConfig & { hasDefault: true }, TSelf>;
 
   // Indexing
   index(config?: Omit<IndexConfig, 'type'>): TSelf;
@@ -153,115 +164,135 @@ export interface BaseFieldBuilder<TType, TSelf> {
   audit(config: AuditConfig): TSelf;
 
   // Special markers
-  tenantKey(): TSelf;
-  ownerKey(): TSelf;
-  softDeleteFlag(): TSelf;
+  tenantKey(): BaseFieldBuilder<TType, TConfig & { isTenantKey: true }, TSelf>;
+  ownerKey(): BaseFieldBuilder<TType, TConfig & { isOwnerKey: true }, TSelf>;
+  softDeleteFlag(): BaseFieldBuilder<TType, TConfig & { isSoftDeleteFlag: true }, TSelf>;
 }
 
 /**
  * String field builder
  */
-export interface StringFieldBuilder extends BaseFieldBuilder<string, StringFieldBuilder> {
-  min(length: number): StringFieldBuilder;
-  max(length: number): StringFieldBuilder;
-  length(length: number): StringFieldBuilder;
-  pattern(regex: RegExp): StringFieldBuilder;
-  email(): StringFieldBuilder;
-  url(): StringFieldBuilder;
-  uuid(): StringFieldBuilder;
-  enum<T extends readonly string[]>(values: T): EnumFieldBuilder<T[number]>;
+export interface StringFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<string, TConfig, StringFieldBuilder<TConfig>> {
+  min(length: number): StringFieldBuilder<TConfig>;
+  max(length: number): StringFieldBuilder<TConfig>;
+  length(length: number): StringFieldBuilder<TConfig>;
+  pattern(regex: RegExp): StringFieldBuilder<TConfig>;
+  email(): StringFieldBuilder<TConfig>;
+  url(): StringFieldBuilder<TConfig>;
+  uuid(): StringFieldBuilder<TConfig>;
+  enum<T extends readonly string[]>(values: T): EnumFieldBuilder<T[number], TConfig>;
 }
 
 /**
  * Number field builder
  */
-export interface NumberFieldBuilder extends BaseFieldBuilder<number, NumberFieldBuilder> {
-  min(value: number): NumberFieldBuilder;
-  max(value: number): NumberFieldBuilder;
-  int(): NumberFieldBuilder;
-  positive(): NumberFieldBuilder;
+export interface NumberFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<number, TConfig, NumberFieldBuilder<TConfig>> {
+  min(value: number): NumberFieldBuilder<TConfig>;
+  max(value: number): NumberFieldBuilder<TConfig>;
+  int(): NumberFieldBuilder<TConfig>;
+  positive(): NumberFieldBuilder<TConfig>;
 }
 
 /**
  * Boolean field builder
  */
-export interface BooleanFieldBuilder extends BaseFieldBuilder<boolean, BooleanFieldBuilder> {}
+export interface BooleanFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<boolean, TConfig, BooleanFieldBuilder<TConfig>> {}
 
 /**
  * Date field builder
  */
-export interface DateFieldBuilder extends BaseFieldBuilder<Date, DateFieldBuilder> {
-  defaultNow(): DateFieldBuilder;
-  onUpdateNow(): DateFieldBuilder;
-  min(date: Date): DateFieldBuilder;
-  max(date: Date): DateFieldBuilder;
+export interface DateFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<Date, TConfig, DateFieldBuilder<TConfig>> {
+  defaultNow(): DateFieldBuilder<TConfig & { hasDefaultNow: true; hasDefault: true }>;
+  onUpdateNow(): DateFieldBuilder<TConfig & { hasOnUpdateNow: true }>;
+  min(date: Date): DateFieldBuilder<TConfig>;
+  max(date: Date): DateFieldBuilder<TConfig>;
 }
 
 /**
  * ObjectId field builder
  */
-export interface ObjectIdFieldBuilder extends BaseFieldBuilder<ObjectId, ObjectIdFieldBuilder> {
-  internalId(): ObjectIdFieldBuilder;
+export interface ObjectIdFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<ObjectId, TConfig, ObjectIdFieldBuilder<TConfig>> {
+  internalId(): ObjectIdFieldBuilder<TConfig & { isInternalId: true }>;
 }
 
 /**
  * Public ID field builder (prefixed IDs)
+ * By default, public IDs are auto-generated
  */
-export interface PublicIdFieldBuilder extends BaseFieldBuilder<string, PublicIdFieldBuilder> {
+export interface PublicIdFieldBuilder<
+  TConfig extends FieldConfigState = EmptyConfig & { isPublicId: true },
+> extends BaseFieldBuilder<string, TConfig, PublicIdFieldBuilder<TConfig>> {
   readonly _prefix: string;
 }
 
 /**
  * Decimal field builder
  */
-export interface DecimalFieldBuilder extends BaseFieldBuilder<Decimal128, DecimalFieldBuilder> {}
+export interface DecimalFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<Decimal128, TConfig, DecimalFieldBuilder<TConfig>> {}
 
 /**
  * Binary field builder
  */
-export interface BinaryFieldBuilder extends BaseFieldBuilder<Binary, BinaryFieldBuilder> {}
+export interface BinaryFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<Binary, TConfig, BinaryFieldBuilder<TConfig>> {}
 
 /**
  * JSON field builder
  */
-export interface JsonFieldBuilder<T = unknown> extends BaseFieldBuilder<T, JsonFieldBuilder<T>> {}
+export interface JsonFieldBuilder<T = unknown, TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<T, TConfig, JsonFieldBuilder<T, TConfig>> {}
 
 /**
  * GeoPoint field builder (GeoJSON Point)
  */
-export interface GeoPointFieldBuilder
+export interface GeoPointFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
   extends BaseFieldBuilder<
     { type: 'Point'; coordinates: [number, number] },
-    GeoPointFieldBuilder
+    TConfig,
+    GeoPointFieldBuilder<TConfig>
   > {}
 
 /**
  * Enum field builder
  */
-export interface EnumFieldBuilder<T extends string>
-  extends BaseFieldBuilder<T, EnumFieldBuilder<T>> {
+export interface EnumFieldBuilder<T extends string, TConfig extends FieldConfigState = EmptyConfig>
+  extends BaseFieldBuilder<T, TConfig, EnumFieldBuilder<T, TConfig>> {
   readonly _values: readonly T[];
 }
 
 /**
  * Array field builder
  */
-export interface ArrayFieldBuilder<TItem extends AnyFieldBuilder>
-  extends BaseFieldBuilder<InferFieldBuilderType<TItem>[], ArrayFieldBuilder<TItem>> {
+export interface ArrayFieldBuilder<
+  TItem extends AnyFieldBuilder,
+  TConfig extends FieldConfigState = EmptyConfig,
+> extends BaseFieldBuilder<
+    InferFieldBuilderType<TItem>[],
+    TConfig,
+    ArrayFieldBuilder<TItem, TConfig>
+  > {
   readonly _item: TItem;
-  min(length: number): ArrayFieldBuilder<TItem>;
-  max(length: number): ArrayFieldBuilder<TItem>;
+  min(length: number): ArrayFieldBuilder<TItem, TConfig>;
+  max(length: number): ArrayFieldBuilder<TItem, TConfig>;
 }
 
 /**
  * Record/Map field builder
  */
 export interface RecordFieldBuilder<
-  TKey extends StringFieldBuilder | NumberFieldBuilder,
+  TKey extends StringFieldBuilder<any> | NumberFieldBuilder<any>,
   TValue extends AnyFieldBuilder,
+  TConfig extends FieldConfigState = EmptyConfig,
 > extends BaseFieldBuilder<
     Record<InferFieldBuilderType<TKey>, InferFieldBuilderType<TValue>>,
-    RecordFieldBuilder<TKey, TValue>
+    TConfig,
+    RecordFieldBuilder<TKey, TValue, TConfig>
   > {
   readonly _key: TKey;
   readonly _value: TValue;
@@ -270,34 +301,42 @@ export interface RecordFieldBuilder<
 /**
  * Union field builder
  */
-export interface UnionFieldBuilder<TVariants extends AnyFieldBuilder[]>
-  extends BaseFieldBuilder<InferFieldBuilderType<TVariants[number]>, UnionFieldBuilder<TVariants>> {
+export interface UnionFieldBuilder<
+  TVariants extends AnyFieldBuilder[],
+  TConfig extends FieldConfigState = EmptyConfig,
+> extends BaseFieldBuilder<
+    InferFieldBuilderType<TVariants[number]>,
+    TConfig,
+    UnionFieldBuilder<TVariants, TConfig>
+  > {
   readonly _variants: TVariants;
 }
 
 /**
  * Any field builder type
+ * Accepts any configuration state
  */
 export type AnyFieldBuilder =
-  | StringFieldBuilder
-  | NumberFieldBuilder
-  | BooleanFieldBuilder
-  | DateFieldBuilder
-  | ObjectIdFieldBuilder
-  | PublicIdFieldBuilder
-  | DecimalFieldBuilder
-  | BinaryFieldBuilder
-  | JsonFieldBuilder
-  | GeoPointFieldBuilder
-  | EnumFieldBuilder<string>
-  | ArrayFieldBuilder<AnyFieldBuilder>
-  | RecordFieldBuilder<StringFieldBuilder | NumberFieldBuilder, AnyFieldBuilder>
-  | UnionFieldBuilder<AnyFieldBuilder[]>;
+  | StringFieldBuilder<any>
+  | NumberFieldBuilder<any>
+  | BooleanFieldBuilder<any>
+  | DateFieldBuilder<any>
+  | ObjectIdFieldBuilder<any>
+  | PublicIdFieldBuilder<any>
+  | DecimalFieldBuilder<any>
+  | BinaryFieldBuilder<any>
+  | JsonFieldBuilder<any, any>
+  | GeoPointFieldBuilder<any>
+  | EnumFieldBuilder<string, any>
+  | ArrayFieldBuilder<AnyFieldBuilder, any>
+  | RecordFieldBuilder<StringFieldBuilder<any> | NumberFieldBuilder<any>, AnyFieldBuilder, any>
+  | UnionFieldBuilder<AnyFieldBuilder[], any>;
 
 /**
  * Infer the TypeScript type from a field builder
  */
-export type InferFieldBuilderType<T> = T extends BaseFieldBuilder<infer TType, any> ? TType : never;
+export type InferFieldBuilderType<T> =
+  T extends BaseFieldBuilder<infer TType, any, any> ? TType : never;
 
 /**
  * Schema definition (map of field name to field builder)

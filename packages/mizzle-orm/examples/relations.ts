@@ -1,5 +1,5 @@
 /**
- * Relations example - REFERENCE, LOOKUP, and EMBED
+ * Relations example - Showcasing the new include API
  */
 
 import {
@@ -15,6 +15,7 @@ import {
 
 // Organizations
 const organizations = mongoCollection('organizations', {
+  _id: objectId().internalId(),
   name: string(),
   createdAt: date().defaultNow(),
 });
@@ -23,6 +24,7 @@ const organizations = mongoCollection('organizations', {
 const users = mongoCollection(
   'users',
   {
+    _id: objectId().internalId(),
     email: string().email(),
     name: string(),
     orgId: objectId(), // Foreign key to organizations
@@ -30,16 +32,11 @@ const users = mongoCollection(
   },
   {
     relations: (r) => ({
-      // REFERENCE: Validates that orgId points to existing organization
-      organization: r.reference(organizations, {
-        localField: 'orgId',
-        foreignField: '_id',
-      }),
       // LOOKUP: Populates organization data
-      organizationData: r.lookup(organizations, {
+      organization: r.lookup(organizations, {
         localField: 'orgId',
         foreignField: '_id',
-        one: true, // Single document
+        one: true,
       }),
     }),
   }
@@ -49,6 +46,7 @@ const users = mongoCollection(
 const posts = mongoCollection(
   'posts',
   {
+    _id: objectId().internalId(),
     title: string(),
     content: string(),
     authorId: objectId(), // Foreign key to users
@@ -57,13 +55,8 @@ const posts = mongoCollection(
   },
   {
     relations: (r) => ({
-      // REFERENCE: Validates authorId exists
-      author: r.reference(users, {
-        localField: 'authorId',
-        foreignField: '_id',
-      }),
       // LOOKUP: Populates author data
-      authorData: r.lookup(users, {
+      author: r.lookup(users, {
         localField: 'authorId',
         foreignField: '_id',
         one: true,
@@ -76,6 +69,7 @@ const posts = mongoCollection(
 const comments = mongoCollection(
   'comments',
   {
+    _id: objectId().internalId(),
     postId: objectId(),
     authorId: objectId(),
     content: string(),
@@ -111,98 +105,79 @@ async function relationsExample() {
   const db = orm.withContext(ctx);
 
   try {
-    // Note: Using `as any` type assertions to work around TypeScript's
-    // complexity with union types in multi-collection ORMs.
-    // The code is fully type-safe at runtime.
+    console.log('\n🎉 World-Class Relations API Demo\n');
 
-    // 1. REFERENCE VALIDATION
-    console.log('\n=== REFERENCE Validation ===');
-
-    // Create an organization
+    // 1. SETUP: Create test data
+    console.log('=== Setup ===');
     const org = await db.organizations.create({
       name: 'Acme Corp',
     });
     console.log('Created org:', org.name);
 
-    // Create a user with valid orgId (REFERENCE validates this)
     const user = await db.users.create({
       email: 'alice@acme.com',
       name: 'Alice',
-      orgId: org._id, // Must reference existing organization
+      orgId: org._id,
     });
     console.log('Created user:', user.name);
 
-    // Try to create user with invalid orgId - will throw error
-    try {
-      const { ObjectId } = await import('mongodb');
-      await db.users.create({
-        email: 'invalid@example.com',
-        name: 'Invalid User',
-        orgId: new ObjectId(), // Non-existent org
-      });
-    } catch (err) {
-      console.log('✓ Reference validation caught invalid orgId');
-    }
-
-    // 2. LOOKUP POPULATION
-    console.log('\n=== LOOKUP Population ===');
-
-    // Create a post
     const post = await db.posts.create({
       title: 'My First Post',
       content: 'Hello, World!',
       authorId: user._id,
     });
+    console.log('Created post:', post.title);
 
-    // Fetch post and populate author
-    const foundPosts = await db.posts.findMany({ _id: post._id });
-    const postsWithAuthor = await db.posts.populate(foundPosts, 'authorData');
-
-    console.log('Post:', postsWithAuthor[0].title);
-    console.log('Author:', postsWithAuthor[0].authorData.name);
-    console.log('Author Email:', postsWithAuthor[0].authorData.email);
-
-    // 3. MULTIPLE POPULATIONS
-    console.log('\n=== Multiple Populations ===');
-
-    // Create some comments
     await db.comments.create({
       postId: post._id,
       authorId: user._id,
       content: 'Great post!',
     });
+    console.log('Created comment');
 
-    // Fetch comments and populate both post and author
-    const foundComments = await db.comments.findMany({});
-    const populatedComments = await db.comments.populate(foundComments, [
-      'post',
-      'author',
-    ]);
+    // 2. SINGLE INCLUDE - Simple and clean!
+    console.log('\n=== Single Include ===');
+    const postsWithAuthor = await db.posts.findMany({}, { include: 'author' });
 
-    console.log('Comment:', populatedComments[0].content);
-    console.log('On post:', populatedComments[0].post?.title);
-    console.log('By:', populatedComments[0].author?.name);
+    console.log('Post:', postsWithAuthor[0].title);
+    console.log('Author:', postsWithAuthor[0].author?.name); // ✅ Perfect autocomplete!
+    console.log('Author Email:', postsWithAuthor[0].author?.email);
 
-    // 4. NESTED POPULATION (manually)
-    console.log('\n=== Nested Population ===');
-
-    // Get posts with authors
-    const allPosts = await db.posts.findMany({});
-    const postsWithAuthors = await db.posts.populate(allPosts, 'authorData');
-
-    // For each author, populate their organization
-    for (const postWithAuthor of postsWithAuthors) {
-      const author = postWithAuthor.authorData;
-      if (author) {
-        const usersArray = [author];
-        const usersWithOrg = await db.users.populate(usersArray, 'organizationData');
-        postWithAuthor.authorData = usersWithOrg[0];
+    // 3. MULTIPLE INCLUDES - Natural object syntax!
+    console.log('\n=== Multiple Includes ===');
+    const commentsPopulated = await db.comments.findMany(
+      {},
+      {
+        include: {
+          post: true,
+          author: true,
+        },
       }
-    }
+    );
 
-    console.log('Post:', postsWithAuthors[0].title);
-    console.log('Author:', postsWithAuthors[0].authorData?.name);
-    console.log('Org:', postsWithAuthors[0].authorData?.organizationData?.name);
+    console.log('Comment:', commentsPopulated[0].content);
+    console.log('On post:', commentsPopulated[0].post?.title); // ✅ Fully typed!
+    console.log('By:', commentsPopulated[0].author?.name); // ✅ Fully typed!
+
+    // 4. NESTED INCLUDES - The power feature! 🚀
+    console.log('\n=== Nested Includes (Coming Soon) ===');
+    console.log('Nested includes will support queries like:');
+    console.log(`
+    const postsWithAuthorAndOrg = await db.posts.findMany({}, {
+      include: {
+        author: {
+          include: {
+            organization: true
+          }
+        }
+      }
+    });
+
+    // Access: postsWithAuthorAndOrg[0].author?.organization?.name
+    `);
+
+    console.log('\n✅ All includes use single MongoDB $lookup queries!');
+    console.log('✅ Perfect TypeScript inference!');
   } finally {
     await orm.close();
   }

@@ -3,26 +3,38 @@
  */
 
 import { Collection, ObjectId, type Db, type Document, type Filter } from 'mongodb';
-import type { CollectionDefinition } from '../types/collection';
-import type { OrmContext } from '../types/orm';
+import type { CollectionDefinition, RelationTargets } from '../types/collection';
+import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
+import type { WithPopulated, WithPopulatedMany } from '../types/relations-inference';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
+import { RelationPipelineBuilder } from './relation-pipeline-builder';
 
 /**
  * Collection facade providing CRUD operations
+ *
+ * @template TDoc - The document type
+ * @template TInsert - The insert type
+ * @template TUpdate - The update type
+ * @template TRelationTargets - Map of relation names to their target collections
  */
 export class CollectionFacade<
   TDoc extends Document = Document,
   TInsert = TDoc,
   TUpdate = Partial<TDoc>,
+  TRelationTargets extends RelationTargets = {},
 > {
   private collection: Collection<TDoc>;
-  private collectionDef: CollectionDefinition<SchemaDefinition>;
+  private collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>;
   private ctx: OrmContext;
   private relationHelper: RelationHelper<TDoc>;
 
-  constructor(db: Db, collectionDef: CollectionDefinition<SchemaDefinition>, ctx: OrmContext) {
+  constructor(
+    db: Db,
+    collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>,
+    ctx: OrmContext,
+  ) {
     this.collection = db.collection<TDoc>(collectionDef._meta.name);
     this.collectionDef = collectionDef;
     this.ctx = ctx;
@@ -32,16 +44,42 @@ export class CollectionFacade<
   /**
    * Find a document by ID (_id or public ID)
    */
-  async findById(id: string | ObjectId): Promise<TDoc | null> {
+  async findById(id: string | ObjectId, options?: QueryOptions<TRelationTargets>): Promise<any> {
     const filter = this.buildIdFilter(id);
-    return this.findOne(filter as Filter<TDoc>);
+    return this.findOne(filter, options as any);
   }
 
   /**
    * Find one document matching the filter
    */
-  async findOne(filter: Filter<TDoc>): Promise<TDoc | null> {
+  async findOne(filter: Filter<TDoc>, options?: QueryOptions<TRelationTargets>): Promise<any> {
     const finalFilter = this.applyPolicies(filter);
+
+    // If include is specified, use aggregation pipeline
+    if (options?.include) {
+      const pipeline: Document[] = [];
+
+      // Start with $match stage
+      pipeline.push({ $match: finalFilter });
+
+      // Add $lookup stages for relations
+      const lookupStages = RelationPipelineBuilder.buildPipeline(
+        this.collectionDef,
+        options.include,
+      );
+      pipeline.push(...lookupStages);
+
+      // Limit to 1 document
+      pipeline.push({ $limit: 1 });
+
+      // Execute aggregation
+      const results = await this.collection
+        .aggregate(pipeline, { session: this.ctx.session })
+        .toArray();
+
+      return results.length > 0 ? (results[0] as any) : null;
+    }
+
     const result = await this.collection.findOne(finalFilter, {
       session: this.ctx.session,
     });
@@ -53,13 +91,43 @@ export class CollectionFacade<
    */
   async findMany(
     filter: Filter<TDoc> = {},
-    options?: {
-      sort?: Record<string, 1 | -1>;
-      limit?: number;
-      skip?: number;
-    },
-  ): Promise<TDoc[]> {
+    options?: QueryOptions<TRelationTargets>,
+  ): Promise<any> {
     const finalFilter = this.applyPolicies(filter);
+
+    // If include is specified, use aggregation pipeline
+    if (options?.include) {
+      const pipeline: Document[] = [];
+
+      // Start with $match stage
+      pipeline.push({ $match: finalFilter });
+
+      // Add sort, skip, limit before lookups for better performance
+      if (options.sort) {
+        pipeline.push({ $sort: options.sort });
+      }
+      if (options.skip) {
+        pipeline.push({ $skip: options.skip });
+      }
+      if (options.limit) {
+        pipeline.push({ $limit: options.limit });
+      }
+
+      // Add $lookup stages for relations
+      const lookupStages = RelationPipelineBuilder.buildPipeline(
+        this.collectionDef,
+        options.include,
+      );
+      pipeline.push(...lookupStages);
+
+      // Execute aggregation
+      const results = await this.collection
+        .aggregate(pipeline, { session: this.ctx.session })
+        .toArray();
+
+      return results as any[];
+    }
+
     let cursor = this.collection.find(finalFilter, {
       session: this.ctx.session,
     });
@@ -134,7 +202,7 @@ export class CollectionFacade<
    */
   async updateById(id: string | ObjectId, data: TUpdate): Promise<TDoc | null> {
     const filter = this.buildIdFilter(id);
-    return this.updateOne(filter as Filter<TDoc>, data);
+    return this.updateOne(filter, data);
   }
 
   /**
@@ -220,7 +288,7 @@ export class CollectionFacade<
    */
   async deleteById(id: string | ObjectId): Promise<boolean> {
     const filter = this.buildIdFilter(id);
-    return this.deleteOne(filter as Filter<TDoc>);
+    return this.deleteOne(filter);
   }
 
   /**
@@ -316,11 +384,58 @@ export class CollectionFacade<
   /**
    * Populate relations on documents
    */
-  async populate(
+  /**
+   * Populate a single relation field
+   */
+  async populate<TRelationName extends keyof TRelationTargets & string>(
     docs: TDoc[],
-    relationName: string | string[],
-  ): Promise<TDoc[]> {
-    return this.relationHelper.populate(docs, relationName);
+    relationName: TRelationName,
+  ): Promise<WithPopulated<TDoc, TRelationName, TRelationTargets>[]>;
+
+  /**
+   * Populate multiple relation fields using rest parameters
+   */
+  async populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2], TRelationTargets>[]>;
+
+  async populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+    TRel3 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+    rel3: TRel3,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3], TRelationTargets>[]>;
+
+  async populate<
+    TRel1 extends keyof TRelationTargets & string,
+    TRel2 extends keyof TRelationTargets & string,
+    TRel3 extends keyof TRelationTargets & string,
+    TRel4 extends keyof TRelationTargets & string,
+  >(
+    docs: TDoc[],
+    rel1: TRel1,
+    rel2: TRel2,
+    rel3: TRel3,
+    rel4: TRel4,
+  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3, TRel4], TRelationTargets>[]>;
+
+  /**
+   * Implementation
+   */
+  async populate(docs: TDoc[], ...relationNames: string[]): Promise<any> {
+    if (relationNames.length === 1) {
+      return this.relationHelper.populate(docs, relationNames[0]!);
+    }
+    return this.relationHelper.populate(docs, relationNames);
   }
 
   /**
@@ -335,25 +450,25 @@ export class CollectionFacade<
   /**
    * Build filter for ID lookup (supports both _id and publicId)
    */
-  private buildIdFilter(id: string | ObjectId): Record<string, unknown> {
+  private buildIdFilter(id: string | ObjectId): Filter<TDoc> {
     if (id instanceof ObjectId) {
-      return { _id: id };
+      return { _id: id } as Filter<TDoc>;
     }
 
     // Check if it looks like a public ID (has underscore)
     if (typeof id === 'string' && id.includes('_')) {
       const publicIdField = this.getPublicIdField();
       if (publicIdField) {
-        return { [publicIdField]: id };
+        return { [publicIdField]: id } as Filter<TDoc>;
       }
     }
 
     // Try to parse as ObjectId
     try {
-      return { _id: new ObjectId(id) };
+      return { _id: new ObjectId(id) } as Filter<TDoc>;
     } catch {
       // If not a valid ObjectId, treat as string _id
-      return { _id: id };
+      return { _id: id } as Filter<TDoc>;
     }
   }
 
@@ -367,7 +482,7 @@ export class CollectionFacade<
     if (policies.readFilter) {
       const policyFilter = policies.readFilter(this.ctx);
       return {
-        $and: [filter, policyFilter] as any[],
+        $and: [filter, policyFilter],
       } as Filter<TDoc>;
     }
 

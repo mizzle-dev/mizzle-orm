@@ -105,7 +105,7 @@ export function array<T extends AnyFieldBuilder>(item: T): ArrayFieldBuilder<T> 
  * Create a record/map field
  */
 export function record<
-  K extends IStringFieldBuilder | INumberFieldBuilder,
+  K extends IStringFieldBuilder<any> | INumberFieldBuilder<any>,
   V extends AnyFieldBuilder,
 >(key: K, value: V): RecordFieldBuilder<K, V> {
   return new RecordFieldBuilder(key, value);
