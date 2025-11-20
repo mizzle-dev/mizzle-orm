@@ -7,11 +7,8 @@ import { ObjectId } from 'mongodb';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, objectId } from '../../schema/fields';
-import type { MongoOrm } from '../../types/orm';
 
 describe('Relations', () => {
-  let orm: MongoOrm;
-
   // Authors collection
   const authors = mongoCollection('authors', {
     name: string(),
@@ -40,8 +37,17 @@ describe('Relations', () => {
     }
   );
 
+  let orm: Awaited<ReturnType<typeof setupOrm>>;
+
+  async function setupOrm() {
+    return createTestOrm({
+      authors,
+      posts,
+    });
+  }
+
   beforeAll(async () => {
-    orm = await createTestOrm([authors, posts]);
+    orm = await setupOrm();
   });
 
   afterAll(async () => {
@@ -137,8 +143,8 @@ describe('Relations', () => {
     });
   });
 
-  describe('LOOKUP relations', () => {
-    it('should populate single relation', async () => {
+  describe('LOOKUP relations with include', () => {
+    it('should include single relation', async () => {
       const ctx = orm.createContext({});
       const db = orm.withContext(ctx);
 
@@ -152,17 +158,16 @@ describe('Relations', () => {
         authorId: author._id,
       });
 
-      // Fetch post and populate author
-      const posts = await db.posts.findMany({ _id: post._id });
-      const populated = await db.posts.populate(posts, 'author');
+      // Fetch post with include
+      const posts = await db.posts.findMany({ _id: post._id }, { include: 'author' });
 
-      expect(populated).toHaveLength(1);
-      expect((populated[0] as any).author).toBeDefined();
-      expect((populated[0] as any).author.name).toBe('Jane Doe');
-      expect((populated[0] as any).author._id.toString()).toBe(author._id.toString());
+      expect(posts).toHaveLength(1);
+      expect(posts[0].author).toBeDefined();
+      expect(posts[0].author?.name).toBe('Jane Doe');
+      expect(posts[0].author?._id.toString()).toBe(author._id.toString());
     });
 
-    it('should populate multiple documents', async () => {
+    it('should include relation for multiple documents', async () => {
       const ctx = orm.createContext({});
       const db = orm.withContext(ctx);
 
@@ -180,13 +185,12 @@ describe('Relations', () => {
       await db.posts.create({ title: 'Post 2', authorId: author2._id });
       await db.posts.create({ title: 'Post 3', authorId: author1._id });
 
-      const posts = await db.posts.findMany({});
-      const populated = await db.posts.populate(posts, 'author');
+      const posts = await db.posts.findMany({}, { include: 'author' });
 
-      expect(populated).toHaveLength(3);
-      expect((populated[0] as any).author.name).toBe('Author 1');
-      expect((populated[1] as any).author.name).toBe('Author 2');
-      expect((populated[2] as any).author.name).toBe('Author 1');
+      expect(posts).toHaveLength(3);
+      expect(posts[0].author?.name).toBe('Author 1');
+      expect(posts[1].author?.name).toBe('Author 2');
+      expect(posts[2].author?.name).toBe('Author 1');
     });
 
     it('should handle missing relations gracefully', async () => {
@@ -206,25 +210,57 @@ describe('Relations', () => {
       // Delete the author
       await db.authors.deleteById(author._id);
 
-      // Populate should not crash
-      const posts = await db.posts.findMany({ _id: post._id });
-      const populated = await db.posts.populate(posts, 'author');
+      // Include should not crash and return null for missing relation
+      const posts = await db.posts.findMany({ _id: post._id }, { include: 'author' });
 
-      expect(populated).toHaveLength(1);
-      expect((populated[0] as any).author).toBeNull();
+      expect(posts).toHaveLength(1);
+      // When relation is missing, MongoDB $lookup returns undefined
+      expect(posts[0].author).toBeUndefined();
     });
   });
 
-  describe('populate error handling', () => {
+  describe('include error handling', () => {
     it('should throw error for non-existent relation', async () => {
       const ctx = orm.createContext({});
       const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({});
-
       await expect(
-        db.posts.populate(posts, 'nonExistentRelation')
+        db.posts.findMany({}, { include: 'nonExistentRelation' as any })
       ).rejects.toThrow("Relation 'nonExistentRelation' not found");
+    });
+  });
+
+  describe('Multiple includes', () => {
+    it('should include multiple relations using object syntax', async () => {
+      const ctx = orm.createContext({});
+      const db = orm.withContext(ctx);
+
+      const author = await db.authors.create({
+        name: 'Test Author',
+        email: 'test@example.com',
+      });
+
+      const post = await db.posts.create({
+        title: 'Test Post',
+        authorId: author._id,
+      });
+
+      // Include both author and authorRef
+      const posts = await db.posts.findMany(
+        { _id: post._id },
+        {
+          include: {
+            author: true,
+            authorRef: true,
+          },
+        }
+      );
+
+      expect(posts).toHaveLength(1);
+      expect(posts[0].author).toBeDefined();
+      expect(posts[0].author?.name).toBe('Test Author');
+      expect(posts[0].authorRef).toBeDefined();
+      expect(posts[0].authorRef?._id.toString()).toBe(author._id.toString());
     });
   });
 });

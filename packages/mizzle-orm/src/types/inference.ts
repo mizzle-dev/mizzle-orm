@@ -2,7 +2,7 @@
  * Type inference utilities for extracting Document, Insert, and Update types from schemas
  */
 
-// import type { ObjectId } from 'mongodb'; // Will be used for filter types later
+import type { ObjectId } from 'mongodb';
 import type { AnyFieldBuilder, SchemaDefinition, InferFieldBuilderType } from './field';
 
 /**
@@ -22,10 +22,19 @@ export type ExtractSchemaOrUse<T> = T extends { _schema: infer S extends SchemaD
 /**
  * Infer the full document type from a schema definition or collection definition
  * This represents what you get when reading from the database
+ * MongoDB always adds _id: ObjectId to every document (unless explicitly defined in schema)
  */
-export type InferDocument<T> = {
-  [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
-};
+export type InferDocument<T> = ('_id' extends keyof ExtractSchemaOrUse<T>
+  ? // If _id is explicitly defined in schema, use that type
+    {
+      [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
+    }
+  : // Otherwise, add _id: ObjectId automatically
+    {
+      _id: ObjectId;
+    } & {
+      [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
+    });
 
 /**
  * Helper to check if a field is optional
