@@ -1,0 +1,22 @@
+# Source files
+src/
+examples/
+tests/
+
+# Config files
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.eslintrc
+.prettierrc
+
+# Development
+*.test.ts
+*.spec.ts
+*.md.backup
+.turbo
+.DS_Store
+
+# Build artifacts
+*.tsbuildinfo
+node_modules/
