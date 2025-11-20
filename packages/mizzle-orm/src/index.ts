@@ -43,5 +43,12 @@ export type { CollectionDefinition, CollectionMeta } from './types/collection';
 
 export type { OrmContext, OrmConfig, MongoOrm } from './types/orm';
 
+// Validation
+export {
+  generateDocumentSchema,
+  generateInsertSchema,
+  generateUpdateSchema,
+} from './validation/zod-schema-generator';
+
 // Utilities
 export { ObjectId } from 'mongodb';
