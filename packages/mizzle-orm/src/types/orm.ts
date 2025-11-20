@@ -4,7 +4,6 @@
 
 import type { MongoClient, ClientSession, ObjectId, Filter } from 'mongodb';
 import type { CollectionDefinition, RelationTargets } from './collection';
-import type { WithPopulated, WithPopulatedMany } from './relations-inference';
 import type { IncludeConfig, WithIncluded } from './include';
 
 /**
@@ -151,45 +150,6 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any, TRel
   // Aggregation
   count(filter?: Filter<TDoc>): Promise<number>;
   aggregate(pipeline: any[]): Promise<any[]>;
-
-  // Relations
-  populate<TRelationName extends keyof TRelationTargets & string>(
-    docs: TDoc[],
-    relationName: TRelationName,
-  ): Promise<WithPopulated<TDoc, TRelationName, TRelationTargets>[]>;
-
-  populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2], TRelationTargets>[]>;
-
-  populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-    TRel3 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-    rel3: TRel3,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3], TRelationTargets>[]>;
-
-  populate<
-    TRel1 extends keyof TRelationTargets & string,
-    TRel2 extends keyof TRelationTargets & string,
-    TRel3 extends keyof TRelationTargets & string,
-    TRel4 extends keyof TRelationTargets & string,
-  >(
-    docs: TDoc[],
-    rel1: TRel1,
-    rel2: TRel2,
-    rel3: TRel3,
-    rel4: TRel4,
-  ): Promise<WithPopulatedMany<TDoc, [TRel1, TRel2, TRel3, TRel4], TRelationTargets>[]>;
 
   // Raw access
   rawCollection(): any;
