@@ -3,7 +3,7 @@
  */
 
 import type { ObjectId } from 'mongodb';
-import type { AnyFieldBuilder, SchemaDefinition, InferFieldBuilderType } from './field';
+import type { AnyFieldBuilder, SchemaDefinition, InferFieldBuilderType, FieldType } from './field';
 import type { ArrayFieldBuilder } from './field';
 import type { CollectionDefinition, TypedRelation, RelationType } from './collection';
 
@@ -23,11 +23,16 @@ export type ExtractSchemaOrUse<T> = T extends { _schema: infer S extends SchemaD
 
 /**
  * Helper to check if a field is an array type
- * ArrayFieldBuilder has a unique _item property
+ * Checks for:
+ * 1. _item property (ArrayFieldBuilder instances)
+ * 2. ArrayFieldBuilder type
+ * 3. _config.type === 'array' (for .optional() wrapped arrays)
  */
 type IsArrayField<TField> = TField extends { _item: any }
   ? true
   : TField extends ArrayFieldBuilder<any>
+    ? true
+    : TField extends { _config: { type: FieldType.ARRAY } }
     ? true
     : false;
 
@@ -135,7 +140,7 @@ type IsOptional<T extends AnyFieldBuilder> = T extends { _configState: { optiona
 
 /**
  * Helper to check if a field has a default value
- * Now checks the type-level _configState for hasDefault, hasDefaultNow, or isSoftDeleteFlag
+ * Now checks the type-level _configState for hasDefault, hasDefaultNow, hasOnUpdateNow, or isSoftDeleteFlag
  * Soft delete flags implicitly default to null when creating records
  */
 type HasDefault<T extends AnyFieldBuilder> = T extends {
@@ -144,6 +149,8 @@ type HasDefault<T extends AnyFieldBuilder> = T extends {
   ? true
   : T extends { _configState: { hasDefaultNow: true } }
     ? true
+    : T extends { _configState: { hasOnUpdateNow: true } }
+      ? true
     : T extends { _configState: { isSoftDeleteFlag: true } }
       ? true
       : false;

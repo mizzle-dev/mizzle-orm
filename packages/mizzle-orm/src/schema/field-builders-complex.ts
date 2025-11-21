@@ -48,6 +48,28 @@ export class ArrayFieldBuilder<
     this._config.arrayConfig = { ...this._config.arrayConfig, max: length };
     return this;
   }
+
+  /**
+   * Override optional() to preserve _item property
+   */
+  optional(): ArrayFieldBuilder<TItem, TConfig & { optional: true }> {
+    const result = new ArrayFieldBuilder<TItem, TConfig & { optional: true }>(this._item);
+    result._config.optional = true;
+    // Copy any other config properties
+    Object.assign(result._config, this._config, { optional: true });
+    return result;
+  }
+
+  /**
+   * Override nullable() to preserve _item property
+   */
+  nullable(): ArrayFieldBuilder<TItem, TConfig & { nullable: true }> {
+    const result = new ArrayFieldBuilder<TItem, TConfig & { nullable: true }>(this._item);
+    result._config.nullable = true;
+    // Copy any other config properties
+    Object.assign(result._config, this._config, { nullable: true });
+    return result;
+  }
 }
 
 /**
