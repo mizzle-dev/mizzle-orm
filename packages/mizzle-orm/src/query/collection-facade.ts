@@ -584,17 +584,67 @@ export class CollectionFacade<
       // Update embedded field in target collection
       const targetCollection = this.db.collection(targetCollectionName);
 
-      // Find all documents that have this source embedded
-      // The embedded _id field should match the source document's embedIdField
-      const filter = {
-        [`${relationName}._id`]: sourceIdString,
-      };
+      // Determine embed strategy from 'from' config
+      const fromPath = config.from;
+      const isInPlace = fromPath.includes('.'); // e.g., 'directory._id'
+      const isArray = fromPath.endsWith('s') && !isInPlace; // heuristic: 'tagIds' vs 'tagId'
 
-      await targetCollection.updateMany(
-        filter,
-        { $set: { [relationName]: newEmbedData } },
-        { session: this.ctx.session },
-      );
+      if (isInPlace) {
+        // In-place strategy: data merged into existing object
+        // Extract base path: 'directory._id' → 'directory'
+        const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+
+        // For in-place embeds, the _id might be stored as ObjectId (not string)
+        // Try both string and ObjectId in filter
+        const filter = {
+          $or: [
+            { [`${basePath}._id`]: sourceIdString },
+            { [`${basePath}._id`]: sourceIdValue },
+          ],
+        };
+
+        // Build $set object with nested paths
+        const updateFields: Record<string, any> = {};
+        for (const [key, value] of Object.entries(newEmbedData)) {
+          if (key !== '_id') {
+            updateFields[`${basePath}.${key}`] = value;
+          }
+        }
+
+        await targetCollection.updateMany(
+          filter,
+          { $set: updateFields },
+          { session: this.ctx.session },
+        );
+      } else {
+        // Separate or Array strategy: embed stored in relationName field
+        const filter = {
+          [`${relationName}._id`]: sourceIdString,
+        };
+
+        if (isArray) {
+          // Array strategy: update specific element in array
+          await targetCollection.updateMany(
+            filter,
+            {
+              $set: {
+                [`${relationName}.$[elem]`]: newEmbedData,
+              },
+            },
+            {
+              arrayFilters: [{ 'elem._id': sourceIdString }],
+              session: this.ctx.session,
+            } as any,
+          );
+        } else {
+          // Separate strategy: replace entire embed
+          await targetCollection.updateMany(
+            filter,
+            { $set: { [relationName]: newEmbedData } },
+            { session: this.ctx.session },
+          );
+        }
+      }
     }
   }
 
