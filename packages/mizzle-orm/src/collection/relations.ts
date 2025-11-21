@@ -9,6 +9,7 @@ import type {
   LookupRelation,
   TypedRelation,
   RelationTargets,
+  EmbedConfig,
 } from '../types/collection';
 import { RelationType } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
@@ -127,13 +128,24 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
  * });
  * ```
  */
+
+/**
+ * Helper to check for excess properties in embed config
+ * Returns an error type if invalid keys are found
+ */
+type ValidateEmbedConfig<T> = T extends EmbedConfig
+  ? Exclude<keyof T, keyof EmbedConfig> extends never
+    ? T
+    : { error: 'Invalid property in embed config'; invalidKeys: Exclude<keyof T, keyof EmbedConfig> }
+  : { error: 'Config must be an EmbedConfig' };
+
 export function embed<
   TOther extends SchemaDefinition,
   TTargets extends RelationTargets,
-  const TConfig, // const forces literal type preservation
+  const TConfig extends EmbedConfig, // const forces literal type preservation, extends provides autocomplete
 >(
   sourceCollection: CollectionDefinition<TOther, TTargets>,
-  config: TConfig,
+  config: TConfig & ValidateEmbedConfig<TConfig>,
 ): TypedRelation<EmbedRelation<any, any>, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.EMBED,

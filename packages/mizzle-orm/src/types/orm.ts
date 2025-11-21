@@ -2,9 +2,10 @@
  * ORM configuration and context types
  */
 
-import type { MongoClient, ClientSession, ObjectId, Filter } from 'mongodb';
+import type { MongoClient, ClientSession, ObjectId } from 'mongodb';
 import type { CollectionDefinition, RelationTargets } from './collection';
 import type { IncludeConfig, WithIncluded } from './include';
+import type { Filter } from './inference';
 
 /**
  * User context for RLS and audit

@@ -206,13 +206,18 @@ export class RelationHelper<TDoc extends Document> {
   /**
    * Process forward embeds for a document
    * Fetches and embeds referenced data into the document
+   * @param doc - The document to process
+   * @param onlyRelations - Optional array of relation names to process (processes all if not specified)
    */
-  async processForwardEmbeds(doc: Partial<TDoc>): Promise<Partial<TDoc>> {
+  async processForwardEmbeds(doc: Partial<TDoc>, onlyRelations?: string[]): Promise<Partial<TDoc>> {
     const relations = this.collectionDef._meta.relations || {};
     let result = { ...doc };
 
     for (const [relationName, relation] of Object.entries(relations)) {
       if (relation.type !== 'embed') continue;
+
+      // Skip if onlyRelations is specified and this relation is not in the list
+      if (onlyRelations && !onlyRelations.includes(relationName)) continue;
 
       // New forward embed config
       if (relation.forward) {

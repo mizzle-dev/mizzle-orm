@@ -2,10 +2,11 @@
  * Collection facade - provides type-safe CRUD operations for a collection
  */
 
-import { Collection, ObjectId, type Db, type Document, type Filter } from 'mongodb';
+import { Collection, ObjectId, type Db, type Document } from 'mongodb';
 import type { CollectionDefinition, RelationTargets } from '../types/collection';
 import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
+import type { Filter } from '../types/inference';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -1023,8 +1024,8 @@ export class CollectionFacade<
           // Update the document if not in dry-run mode
           if (!dryRun) {
             await this.collection.updateOne(
-              { _id: doc._id },
-              { $set: { [relationName]: (refreshedDoc as any)[relationName] } },
+              { _id: doc._id } as Filter<TDoc>,
+              { $set: { [relationName]: (refreshedDoc as any)[relationName] } } as any,
               { session: this.ctx.session },
             );
           }

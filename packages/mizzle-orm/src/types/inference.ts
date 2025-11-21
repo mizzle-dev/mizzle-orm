@@ -33,8 +33,8 @@ type IsArrayField<TField> = TField extends { _item: any }
   : TField extends ArrayFieldBuilder<any>
     ? true
     : TField extends { _config: { type: FieldType.ARRAY } }
-    ? true
-    : false;
+      ? true
+      : false;
 
 /**
  * Helper to extract the 'from' path from embed config
@@ -151,9 +151,9 @@ type HasDefault<T extends AnyFieldBuilder> = T extends {
     ? true
     : T extends { _configState: { hasOnUpdateNow: true } }
       ? true
-    : T extends { _configState: { isSoftDeleteFlag: true } }
-      ? true
-      : false;
+      : T extends { _configState: { isSoftDeleteFlag: true } }
+        ? true
+        : false;
 
 /**
  * Helper to check if a field is auto-generated (like _id or publicId)
@@ -201,11 +201,26 @@ export type InferInsert<T> = Pick<InferDocument<T>, RequiredInsertFields<T>> &
   Partial<Pick<InferDocument<T>, OptionalInsertFields<T>>>;
 
 /**
+ * Helper to get embedded field keys from a document type
+ * These are optional fields with object/array types containing _id (auto-computed)
+ */
+type EmbedFieldKeys<T> = {
+  [K in keyof T]: undefined extends T[K]
+    ? NonNullable<T[K]> extends Array<{ _id: any }>
+      ? K
+      : NonNullable<T[K]> extends { _id: string }
+        ? K
+        : never
+    : never;
+}[keyof T];
+
+/**
  * Infer the update type from a schema definition or collection definition
  * This represents what you can pass when updating a document
  * All fields are optional for updates
+ * Excludes embedded fields since they're auto-computed
  */
-export type InferUpdate<T> = Partial<Omit<InferDocument<T>, '_id'>>;
+export type InferUpdate<T> = Partial<Omit<InferDocument<T>, '_id' | EmbedFieldKeys<InferDocument<T>>>>;
 
 /**
  * Utility type to extract schema from a collection definition
@@ -214,13 +229,18 @@ export type ExtractSchema<T> = T extends { _schema: infer S extends SchemaDefini
 
 /**
  * MongoDB filter type (simplified)
+ * Allows either the exact value or filter operators for each field
+ * Makes all fields optional since filters don't need to specify every field
  */
 export type Filter<T> = {
-  [K in keyof T]?: T[K] | FilterOperators<T[K]>;
+  [K in keyof T]?: T[K] | FilterOperators<T[K]> | null;
 } & {
   $and?: Filter<T>[];
   $or?: Filter<T>[];
   $nor?: Filter<T>[];
+  // Allow any string keys for flexibility (e.g., embedded field paths like "user.name")
+  // TODO: Improve this to better type embedded paths
+  [key: string]: any;
 };
 
 /**

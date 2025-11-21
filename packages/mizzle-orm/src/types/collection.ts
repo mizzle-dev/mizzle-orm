@@ -124,6 +124,25 @@ export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extend
 }
 
 /**
+ * Complete embed configuration type for the embed() function
+ * Combines forward and reverse config with delete handling
+ * Generic to preserve literal types for autocomplete and type safety
+ */
+export interface EmbedConfig<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
+  // Forward embed (required)
+  forward?: ForwardEmbedConfig<TFrom, TPaths>;
+
+  // Reverse embed (optional - auto-updates)
+  reverse?: ReverseEmbedConfig;
+
+  // Shorthand for reverse embed
+  keepFresh?: boolean;
+
+  // Delete handling (optional)
+  onSourceDelete?: 'nullify' | 'cascade' | 'no-action';
+}
+
+/**
  * Embed relation configuration (write-time denormalization)
  * Generic to preserve literal types from ForwardEmbedConfig
  */
