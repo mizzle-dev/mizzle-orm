@@ -2,15 +2,17 @@
  * Relation handling for collections
  */
 
-import type { Db, Document, ObjectId } from 'mongodb';
+import { ObjectId as MongoObjectId, type Db, type Document, type ObjectId } from 'mongodb';
 import type { OrmContext } from '../types/orm';
 import type {
   ReferenceRelation,
   EmbedRelation,
   LookupRelation,
   CollectionDefinition,
+  ForwardEmbedConfig,
 } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
+import { PathNavigator } from '../utils/path-navigator';
 
 /**
  * Populate a LOOKUP relation
@@ -198,6 +200,130 @@ export class RelationHelper<TDoc extends Document> {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Process forward embeds for a document
+   * Fetches and embeds referenced data into the document
+   */
+  async processForwardEmbeds(doc: Partial<TDoc>): Promise<Partial<TDoc>> {
+    const relations = this.collectionDef._meta.relations || {};
+    let result = { ...doc };
+
+    for (const [relationName, relation] of Object.entries(relations)) {
+      if (relation.type !== 'embed') continue;
+
+      // New forward embed config
+      if (relation.forward) {
+        result = await this.processForwardEmbed(
+          result,
+          relationName,
+          relation.forward,
+          relation.sourceCollection,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Process a single forward embed relation
+   */
+  private async processForwardEmbed(
+    doc: Partial<TDoc>,
+    relationName: string,
+    config: ForwardEmbedConfig,
+    sourceCollectionName: string,
+  ): Promise<Partial<TDoc>> {
+    // Extract IDs from document
+    const ids = PathNavigator.extractIds(doc as Document, config);
+    if (ids.length === 0) return doc;
+
+    // Fetch source documents
+    const objectIds = ids.map(id => {
+      try {
+        return new MongoObjectId(id);
+      } catch {
+        return id as any;
+      }
+    });
+
+    const sourceDocs = await this.db
+      .collection(sourceCollectionName)
+      .find({ _id: { $in: objectIds } })
+      .toArray();
+
+    if (sourceDocs.length === 0) {
+      // No source documents found - log warning but continue
+      console.warn(
+        `Forward embed '${relationName}': No source documents found for IDs: ${ids.join(', ')}`
+      );
+      return doc;
+    }
+
+    // Build embed map (ID → embedded fields)
+    const embedMap = new Map<string, Document>();
+    const embedIdField = config.embedIdField || '_id';
+
+    for (const sourceDoc of sourceDocs) {
+      const embedded = this.extractFields(sourceDoc, config.fields, embedIdField);
+      const sourceId = String(sourceDoc._id);
+      embedMap.set(sourceId, embedded);
+    }
+
+    // Apply embeds to document
+    const result = PathNavigator.applyEmbeds(
+      doc as Document,
+      config,
+      embedMap,
+      relationName,
+    );
+
+    return result as Partial<TDoc>;
+  }
+
+  /**
+   * Extract specified fields from document
+   * ALWAYS includes the ID field from embedIdField config
+   */
+  private extractFields(
+    doc: Document,
+    fields: string[] | Record<string, 1 | 0>,
+    embedIdField: string = '_id',
+  ): Document {
+    if (Array.isArray(fields)) {
+      const result: Document = {};
+
+      // Always include the ID field first (convert to string)
+      if (embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const field of fields) {
+        if (field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
+    } else {
+      // Projection syntax
+      const result: Document = {};
+
+      // Always include the ID field unless explicitly excluded (convert to string)
+      if (fields._id !== 0 && embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const [field, include] of Object.entries(fields)) {
+        if (include === 1 && field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
     }
   }
 }

@@ -4,6 +4,8 @@
 
 import type { ObjectId } from 'mongodb';
 import type { AnyFieldBuilder, SchemaDefinition, InferFieldBuilderType } from './field';
+import type { ArrayFieldBuilder } from './field';
+import type { CollectionDefinition, TypedRelation, RelationType } from './collection';
 
 /**
  * Infer the base TypeScript type from a field builder
@@ -20,9 +22,72 @@ export type ExtractSchemaOrUse<T> = T extends { _schema: infer S extends SchemaD
     : never;
 
 /**
+ * Helper to check if a field is an array type
+ * ArrayFieldBuilder has a unique _item property
+ */
+type IsArrayField<TField> = TField extends { _item: any }
+  ? true
+  : TField extends ArrayFieldBuilder<any>
+    ? true
+    : false;
+
+/**
+ * Helper to extract the 'from' path from embed config
+ */
+type ExtractFromPath<TConfig> = TConfig extends { forward?: { from?: infer TFrom } }
+  ? TFrom
+  : never;
+
+/**
+ * Helper to infer cardinality of an embed based on config and parent schema
+ */
+type InferEmbedCardinality<
+  TParentSchema extends SchemaDefinition,
+  TConfig,
+> = TConfig extends { forward?: { paths?: any[] } }
+  ? 'many' // Multiple paths = array
+  : ExtractFromPath<TConfig> extends keyof TParentSchema
+    ? IsArrayField<TParentSchema[ExtractFromPath<TConfig>]> extends true
+      ? 'many' // Source field is array = array embed
+      : 'one' // Source field is single = single embed
+    : 'unknown'; // Can't determine
+
+/**
+ * Helper to create embedded document type
+ */
+type EmbeddedDocType<TTarget> = TTarget extends CollectionDefinition<any, any>
+  ? Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+  : never;
+
+/**
+ * Extract embedded fields from a collection's relations
+ * For each EMBED relation, adds an optional field with the target document type
+ * The embedded type includes _id: string plus any fields from the target
+ * Now correctly infers single vs array based on source field type
+ */
+type InferEmbeddedFields<T> = T extends CollectionDefinition<infer TSchema, infer TRelationTargets>
+  ? {
+      [K in keyof TRelationTargets]?: TRelationTargets[K] extends TypedRelation<
+        infer TRel,
+        infer TTarget,
+        infer TConfig
+      >
+        ? TRel extends { type: RelationType.EMBED }
+          ? InferEmbedCardinality<TSchema, TConfig> extends 'many'
+            ? Array<EmbeddedDocType<TTarget>> // Array embed
+            : InferEmbedCardinality<TSchema, TConfig> extends 'one'
+              ? EmbeddedDocType<TTarget> // Single embed
+              : EmbeddedDocType<TTarget> | Array<EmbeddedDocType<TTarget>> // Unknown, return union
+          : never
+        : never;
+    }
+  : {};
+
+/**
  * Infer the full document type from a schema definition or collection definition
  * This represents what you get when reading from the database
  * MongoDB always adds _id: ObjectId to every document (unless explicitly defined in schema)
+ * EMBED relations add optional embedded fields
  */
 export type InferDocument<T> = ('_id' extends keyof ExtractSchemaOrUse<T>
   ? // If _id is explicitly defined in schema, use that type
@@ -34,7 +99,8 @@ export type InferDocument<T> = ('_id' extends keyof ExtractSchemaOrUse<T>
       _id: ObjectId;
     } & {
       [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
-    });
+    }) &
+  InferEmbeddedFields<T>;
 
 /**
  * Helper to check if a field is optional

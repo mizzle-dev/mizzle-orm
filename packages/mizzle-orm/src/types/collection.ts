@@ -75,12 +75,62 @@ export interface ReferenceRelation {
 }
 
 /**
- * Embed relation configuration (denormalized)
+ * Reverse embed configuration
+ */
+export interface ReverseEmbedConfig {
+  enabled?: boolean;
+  strategy?: 'sync' | 'async' | 'manual'; // Default: 'async'
+  watchFields?: string[]; // Only trigger if these fields change
+  batchSize?: number; // Default: 100
+  maxUpdates?: number; // Default: 10000
+}
+
+/**
+ * Forward embed configuration
+ */
+export interface ForwardEmbedConfig {
+  // ==== ID Location (Required - one or the other) ====
+
+  // Simple: single field or path
+  from?: string;
+  // Examples:
+  // - 'authorId' → separate strategy
+  // - 'author._id' → inplace strategy
+  // - 'workflow.items[].refId' → array embed
+
+  // Complex: multiple paths
+  paths?: string[];
+  // Examples:
+  // - ['workflow.required[].ref._id', 'workflow.optional[].ref._id']
+
+  // ==== Fields to Embed (Required) ====
+  fields: string[] | Record<string, 1 | 0>;
+
+  // ==== ID Field Configuration ====
+  embedIdField?: string; // Default: '_id'
+  // Which field to use as _id in embedded object
+  // Examples: '_id', 'id' (publicId), etc.
+
+  // ==== Storage (Auto-Inferred) ====
+  into?: string; // Where to store embed (for separate strategy). Defaults to relation name
+
+  // ==== Reverse Updates (Optional) ====
+  keepFresh?: boolean; // Shorthand for reverse: { enabled: true, strategy: 'async' }
+  reverse?: ReverseEmbedConfig;
+}
+
+/**
+ * Embed relation configuration (write-time denormalization)
  */
 export interface EmbedRelation {
   type: RelationType.EMBED;
   sourceCollection: string;
-  strategy: 'denormalized';
+
+  // New forward embed config
+  forward?: ForwardEmbedConfig;
+
+  // Legacy support (for backwards compatibility during migration)
+  strategy?: 'denormalized';
   extractIds?: (doc: Document) => string[];
   applyEmbeds?: (doc: Document, embeds: Document[]) => Document;
 }
@@ -116,19 +166,18 @@ export type Relations = Record<string, AnyRelation>;
 export type TypedRelation<
   TRel extends AnyRelation,
   TTarget extends CollectionDefinition<any, any>,
+  TConfig = unknown,
 > = TRel & {
   readonly _targetCollection?: TTarget; // Phantom type for tracking target (never exists at runtime)
+  readonly _relConfig?: TConfig; // Phantom type for tracking config (never exists at runtime)
 };
 
 /**
  * Extract relation targets from a typed relations object
+ * Now preserves the full TypedRelation for better type inference
  */
 export type ExtractRelationTargets<TRelations> = {
-  [K in keyof TRelations]: TRelations[K] extends { readonly _targetCollection?: infer TTarget }
-    ? TTarget extends CollectionDefinition<any, any>
-      ? TTarget
-      : never
-    : never;
+  [K in keyof TRelations]: TRelations[K]; // Preserve full TypedRelation
 };
 
 
@@ -273,9 +322,9 @@ export interface CollectionMeta<TSchema extends SchemaDefinition = SchemaDefinit
 }
 
 /**
- * Relation targets map - maps relation name to target collection
+ * Relation targets map - maps relation name to TypedRelation
  */
-export type RelationTargets = Record<string, CollectionDefinition<any, any>>;
+export type RelationTargets = Record<string, TypedRelation<any, any, any>>;
 
 /**
  * Collection definition (what mongoCollection returns)
@@ -293,9 +342,9 @@ export interface CollectionDefinition<
   readonly _brand: 'CollectionDefinition';
 
   // Type helpers
-  readonly $inferDocument: InferDocument<TSchema>;
-  readonly $inferInsert: InferInsert<TSchema>;
-  readonly $inferUpdate: InferUpdate<TSchema>;
+  readonly $inferDocument: InferDocument<CollectionDefinition<TSchema, TRelationTargets>>;
+  readonly $inferInsert: InferInsert<CollectionDefinition<TSchema, TRelationTargets>>;
+  readonly $inferUpdate: InferUpdate<CollectionDefinition<TSchema, TRelationTargets>>;
 }
 
 /**

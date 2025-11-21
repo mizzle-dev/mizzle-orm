@@ -178,6 +178,9 @@ export class CollectionFacade<
     // Validate references
     await this.relationHelper.validateReferences(finalDoc as any);
 
+    // Process forward embeds (fetch and embed referenced data)
+    finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
+
     // Insert
     const result = await this.collection.insertOne(finalDoc as any, {
       session: this.ctx.session,
@@ -245,6 +248,9 @@ export class CollectionFacade<
 
     // Validate references
     await this.relationHelper.validateReferences(finalUpdate as any);
+
+    // Process forward embeds (fetch and embed referenced data)
+    finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
 
     // Update
     const result = await this.collection.findOneAndUpdate(

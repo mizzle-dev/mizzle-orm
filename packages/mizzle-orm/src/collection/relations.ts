@@ -71,26 +71,64 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
 }
 
 /**
- * Define an EMBED relation - denormalized data fetched separately
+ * Define an EMBED relation - write-time denormalization for read performance
+ *
+ * When documents are saved, referenced data is fetched and stored alongside
+ * the reference, eliminating the need for lookups on read.
  *
  * @example
  * ```typescript
- * const users = mongoCollection('users', {
- *   favoritePostIds: array(objectId()),
+ * // Simple embed
+ * const posts = mongoCollection('posts', {
+ *   authorId: string(),
  * }, {
  *   relations: {
- *     favoritePosts: embed(posts, {
- *       extractIds: (user) => user.favoritePostIds,
- *       applyEmbeds: (user, posts) => ({ ...user, favoritePosts: posts }),
+ *     author: embed(authors, {
+ *       from: 'authorId',
+ *       fields: ['name', 'email', 'avatar'],
+ *       keepFresh: true, // Auto-update when author changes
+ *     })
+ *   }
+ * });
+ *
+ * // Array embed
+ * const posts = mongoCollection('posts', {
+ *   tagIds: array(string()),
+ * }, {
+ *   relations: {
+ *     tags: embed(tags, {
+ *       from: 'tagIds',
+ *       fields: ['name', 'color'],
+ *     })
+ *   }
+ * });
+ *
+ * // In-place embed (merge into existing object)
+ * const workflows = mongoCollection('workflows', {
+ *   workflow: object({
+ *     refDirectory: object({
+ *       _id: string(),
+ *       name: string().optional(),
+ *     }),
+ *   }),
+ * }, {
+ *   relations: {
+ *     directory: embed(directories, {
+ *       from: 'workflow.refDirectory._id', // ._id → inplace strategy
+ *       fields: ['name', 'type'],
  *     })
  *   }
  * });
  * ```
  */
-export function embed<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+export function embed<
+  TOther extends SchemaDefinition,
+  TTargets extends RelationTargets,
+  TConfig extends Omit<EmbedRelation, 'type' | 'sourceCollection'>,
+>(
   sourceCollection: CollectionDefinition<TOther, TTargets>,
-  config: Omit<EmbedRelation, 'type' | 'sourceCollection'>,
-): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>> {
+  config: TConfig & {}, // & {} forces literal type preservation
+): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.EMBED,
     sourceCollection: sourceCollection._meta.name,
