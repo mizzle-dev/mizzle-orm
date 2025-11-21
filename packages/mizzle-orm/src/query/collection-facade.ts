@@ -34,6 +34,10 @@ export class CollectionFacade<
     Array<{ targetCollectionName: string; relationName: string; config: any }>
   >;
   private collectionRegistry?: Map<string, CollectionDefinition>;
+  private deleteRegistry?: Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any; deleteAction: string }>
+  >;
 
   constructor(
     db: Db,
@@ -45,6 +49,15 @@ export class CollectionFacade<
         Array<{ targetCollectionName: string; relationName: string; config: any }>
       >;
       collectionRegistry?: Map<string, CollectionDefinition>;
+      deleteRegistry?: Map<
+        string,
+        Array<{
+          targetCollectionName: string;
+          relationName: string;
+          config: any;
+          deleteAction: string;
+        }>
+      >;
     },
   ) {
     this.db = db;
@@ -54,6 +67,7 @@ export class CollectionFacade<
     this.relationHelper = new RelationHelper<TDoc>(db, collectionDef, ctx);
     this.reverseEmbedRegistry = options?.reverseEmbedRegistry;
     this.collectionRegistry = options?.collectionRegistry;
+    this.deleteRegistry = options?.deleteRegistry;
   }
 
   /**
@@ -352,6 +366,11 @@ export class CollectionFacade<
       await this.collectionDef._meta.hooks.afterDelete(this.ctx, doc as any);
     }
 
+    // Handle delete cascades
+    if (result.deletedCount > 0) {
+      await this.handleDeleteCascades(doc as TDoc);
+    }
+
     return result.deletedCount > 0;
   }
 
@@ -566,6 +585,36 @@ export class CollectionFacade<
         continue;
       }
 
+      // Check if async strategy is enabled
+      const reverseConfig = config.reverse;
+      const strategy = reverseConfig?.strategy || 'sync';
+
+      if (strategy === 'async') {
+        // Defer propagation using setTimeout (non-blocking)
+        setTimeout(() => {
+          this.executePropagation(updatedDoc, config, targetCollectionName, relationName).catch(
+            (err) => {
+              console.error('Error in async embed propagation:', err);
+            },
+          );
+        }, 0);
+      } else {
+        // Execute synchronously
+        await this.executePropagation(updatedDoc, config, targetCollectionName, relationName);
+      }
+    }
+  }
+
+  /**
+   * Execute the actual propagation logic
+   */
+  private async executePropagation(
+    updatedDoc: TDoc,
+    config: any,
+    targetCollectionName: string,
+    relationName: string,
+  ): Promise<void> {
+
       // Build new embedded data
       const embedIdField = config.embedIdField || '_id';
       const newEmbedData = this.extractFieldsForEmbed(
@@ -645,7 +694,6 @@ export class CollectionFacade<
           );
         }
       }
-    }
   }
 
   /**
@@ -709,6 +757,161 @@ export class CollectionFacade<
         }
       }
       return result;
+    }
+  }
+
+  /**
+   * Handle delete cascades when a source document is deleted
+   */
+  private async handleDeleteCascades(deletedDoc: TDoc): Promise<void> {
+    if (!this.deleteRegistry) {
+      return;
+    }
+
+    const collectionName = this.collectionDef._meta.name;
+    const targets = this.deleteRegistry.get(collectionName);
+
+    if (!targets || targets.length === 0) {
+      return;
+    }
+
+    for (const target of targets) {
+      const { targetCollectionName, relationName, config, deleteAction } = target;
+
+      const embedIdField = config.embedIdField || '_id';
+      const sourceIdValue = (deletedDoc as any)[embedIdField];
+      const sourceIdString =
+        sourceIdValue instanceof ObjectId
+          ? sourceIdValue.toHexString()
+          : String(sourceIdValue);
+
+      const targetCollection = this.db.collection(targetCollectionName);
+
+      // Determine embed strategy from 'from' config
+      const fromPath = config.from;
+      const isInPlace = fromPath.includes('.'); // e.g., 'directory._id'
+      const isArray = fromPath.endsWith('s') && !isInPlace;
+
+      if (deleteAction === 'cascade') {
+        // Delete entire document
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          await targetCollection.deleteMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: delete documents containing this embed in array
+          await targetCollection.deleteMany(
+            { [`${relationName}._id`]: sourceIdString },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy
+          await targetCollection.deleteMany(
+            { [`${relationName}._id`]: sourceIdString },
+            { session: this.ctx.session },
+          );
+        }
+      } else if (deleteAction === 'nullify') {
+        // Set both embed and reference to null
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          await targetCollection.updateMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            {
+              $set: {
+                [basePath]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: remove the specific embed from array and nullify reference
+          const refField = fromPath; // e.g., 'tagIds'
+          // Remove from embed array
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $pull: { [relationName]: { _id: sourceIdString } } as any,
+            },
+            { session: this.ctx.session },
+          );
+          // Remove from reference array
+          await targetCollection.updateMany(
+            { [refField]: sourceIdValue },
+            {
+              $pull: { [refField]: sourceIdValue } as any,
+            },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy: nullify both embed and reference
+          const refField = fromPath; // e.g., 'authorId'
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $set: {
+                [relationName]: null,
+                [refField]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        }
+      } else if (deleteAction === 'clear') {
+        // Clear embed but keep reference
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          // Clear all fields except _id in the nested object
+          const unsetFields: Record<string, any> = {};
+          for (const field of config.fields) {
+            unsetFields[`${basePath}.${field}`] = '';
+          }
+          await targetCollection.updateMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            {
+              $unset: unsetFields,
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: remove from embed array but keep in reference array
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $pull: { [relationName]: { _id: sourceIdString } } as any,
+            },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy: nullify embed but keep reference
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $set: {
+                [relationName]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        }
+      }
     }
   }
 }

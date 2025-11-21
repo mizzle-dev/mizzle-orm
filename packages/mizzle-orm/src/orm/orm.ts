@@ -99,6 +99,37 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
     }
   }
 
+  // Build delete cascade registry
+  // Maps: sourceCollectionName → Array<{ targetCollection, relationName, deleteAction }>
+  const deleteRegistry = new Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any; deleteAction: string }>
+  >();
+
+  for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
+    const relations = targetCollectionDef._meta.relations || {};
+    for (const [relationName, relation] of Object.entries(relations)) {
+      if (relation.type === 'embed' && (relation as any).forward) {
+        const embedRelation = relation as any;
+        const deleteAction = embedRelation.onSourceDelete || 'no-action';
+
+        // Only register if there's an action to take
+        if (deleteAction !== 'no-action') {
+          const sourceCollectionName = embedRelation.sourceCollection;
+          if (!deleteRegistry.has(sourceCollectionName)) {
+            deleteRegistry.set(sourceCollectionName, []);
+          }
+          deleteRegistry.get(sourceCollectionName)!.push({
+            targetCollectionName: targetCollectionDef._meta.name,
+            relationName,
+            config: embedRelation.forward,
+            deleteAction,
+          });
+        }
+      }
+    }
+  }
+
   // Collections are already in the right format
   const collections = config.collections;
 
@@ -146,6 +177,7 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
         return new CollectionFacade(db, collectionDef, ctx, {
           reverseEmbedRegistry,
           collectionRegistry,
+          deleteRegistry,
         });
       },
     }) as DbFacade<TCollections>;
