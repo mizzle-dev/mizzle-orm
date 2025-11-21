@@ -17,10 +17,16 @@ import {
   JsonFieldBuilder,
   GeoPointFieldBuilder,
 } from './field-builders-mongo';
-import { ArrayFieldBuilder, RecordFieldBuilder, UnionFieldBuilder } from './field-builders-complex';
+import {
+  ArrayFieldBuilder,
+  RecordFieldBuilder,
+  UnionFieldBuilder,
+  ObjectFieldBuilder,
+} from './field-builders-complex';
 import type {
   StringFieldBuilder as IStringFieldBuilder,
   NumberFieldBuilder as INumberFieldBuilder,
+  SchemaDefinition,
 } from '../types/field';
 
 /**
@@ -116,4 +122,21 @@ export function record<
  */
 export function union<V extends AnyFieldBuilder[]>(...variants: V): UnionFieldBuilder<V> {
   return new UnionFieldBuilder(variants);
+}
+
+/**
+ * Create an object field with nested schema
+ *
+ * @example
+ * // Validated nested object
+ * workflow: object({
+ *   name: string(),
+ *   items: array(object({ title: string() }))
+ * })
+ *
+ * // Unvalidated flexible object
+ * metadata: object()
+ */
+export function object<T extends SchemaDefinition>(schema?: T): ObjectFieldBuilder<T> {
+  return new ObjectFieldBuilder(schema);
 }

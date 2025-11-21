@@ -23,6 +23,7 @@ export enum FieldType {
   ARRAY = 'array',
   RECORD = 'record',
   UNION = 'union',
+  OBJECT = 'object',
 }
 
 /**
@@ -118,6 +119,10 @@ export interface FieldConfig<TType = unknown> {
 
   unionConfig?: {
     variants?: FieldConfig[];
+  };
+
+  objectConfig?: {
+    schema?: Record<string, FieldConfig>; // Nested schema
   };
 
   publicIdConfig?: {
@@ -313,6 +318,20 @@ export interface UnionFieldBuilder<
 }
 
 /**
+ * Object field builder (nested schema)
+ */
+export interface ObjectFieldBuilder<
+  TSchema extends SchemaDefinition,
+  TConfig extends FieldConfigState = EmptyConfig,
+> extends BaseFieldBuilder<
+    InferObjectType<TSchema>,
+    TConfig,
+    ObjectFieldBuilder<TSchema, TConfig>
+  > {
+  readonly _schema: TSchema;
+}
+
+/**
  * Any field builder type
  * Accepts any configuration state
  */
@@ -330,13 +349,47 @@ export type AnyFieldBuilder =
   | EnumFieldBuilder<string, any>
   | ArrayFieldBuilder<AnyFieldBuilder, any>
   | RecordFieldBuilder<StringFieldBuilder<any> | NumberFieldBuilder<any>, AnyFieldBuilder, any>
-  | UnionFieldBuilder<AnyFieldBuilder[], any>;
+  | UnionFieldBuilder<AnyFieldBuilder[], any>
+  | ObjectFieldBuilder<SchemaDefinition, any>;
 
 /**
  * Infer the TypeScript type from a field builder
  */
 export type InferFieldBuilderType<T> =
   T extends BaseFieldBuilder<infer TType, any, any> ? TType : never;
+
+/**
+ * Helper to check if a field is optional at the type level
+ */
+type IsFieldOptional<T extends AnyFieldBuilder> = T extends {
+  _configState: { optional: true };
+}
+  ? true
+  : false;
+
+/**
+ * Required fields in object schema
+ */
+type RequiredObjectFields<TSchema extends SchemaDefinition> = {
+  [K in keyof TSchema]: IsFieldOptional<TSchema[K]> extends true ? never : K;
+}[keyof TSchema];
+
+/**
+ * Optional fields in object schema
+ */
+type OptionalObjectFields<TSchema extends SchemaDefinition> = {
+  [K in keyof TSchema]: IsFieldOptional<TSchema[K]> extends true ? K : never;
+}[keyof TSchema];
+
+/**
+ * Infer object type from schema definition
+ * Respects optional fields and makes them optional in the resulting type
+ */
+export type InferObjectType<TSchema extends SchemaDefinition> = Pick<
+  { [K in keyof TSchema]: InferFieldBuilderType<TSchema[K]> },
+  RequiredObjectFields<TSchema>
+> &
+  Partial<Pick<{ [K in keyof TSchema]: InferFieldBuilderType<TSchema[K]> }, OptionalObjectFields<TSchema>>>;
 
 /**
  * Schema definition (map of field name to field builder)
