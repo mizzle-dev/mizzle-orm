@@ -25,6 +25,7 @@ export {
   array,
   record,
   union,
+  object,
 } from './schema/fields';
 
 // Types
@@ -40,6 +41,7 @@ export type {
   DateFieldBuilder,
   ObjectIdFieldBuilder,
   PublicIdFieldBuilder,
+  ObjectFieldBuilder,
 } from './types/field';
 
 export type { CollectionDefinition, CollectionMeta } from './types/collection';

@@ -1,5 +1,5 @@
 /**
- * Complex field builder implementations (array, record, union)
+ * Complex field builder implementations (array, record, union, object)
  */
 
 import { FieldType } from '../types/field';
@@ -8,9 +8,12 @@ import type {
   ArrayFieldBuilder as IArrayFieldBuilder,
   RecordFieldBuilder as IRecordFieldBuilder,
   UnionFieldBuilder as IUnionFieldBuilder,
+  ObjectFieldBuilder as IObjectFieldBuilder,
   StringFieldBuilder,
   NumberFieldBuilder,
   InferFieldBuilderType,
+  InferObjectType,
+  SchemaDefinition,
 } from '../types/field';
 import type { FieldConfigState, EmptyConfig } from '../types/field-config';
 import { FieldBuilder } from './field-builder-base';
@@ -100,5 +103,31 @@ export class UnionFieldBuilder<
       },
     });
     this._variants = variants;
+  }
+}
+
+/**
+ * Object field builder (nested schema)
+ */
+export class ObjectFieldBuilder<
+    TSchema extends SchemaDefinition,
+    TConfig extends FieldConfigState = EmptyConfig,
+  >
+  extends FieldBuilder<InferObjectType<TSchema>, TConfig, ObjectFieldBuilder<TSchema, TConfig>>
+  implements IObjectFieldBuilder<TSchema, TConfig>
+{
+  readonly _schema: TSchema;
+
+  constructor(schema?: TSchema) {
+    const objectConfig = schema
+      ? {
+          schema: Object.fromEntries(
+            Object.entries(schema).map(([key, field]) => [key, field._config])
+          ),
+        }
+      : undefined;
+
+    super(FieldType.OBJECT, { objectConfig });
+    this._schema = (schema || {}) as TSchema;
   }
 }
