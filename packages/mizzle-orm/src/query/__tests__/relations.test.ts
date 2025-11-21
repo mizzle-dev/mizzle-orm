@@ -7,6 +7,7 @@ import { ObjectId } from 'mongodb';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, objectId } from '../../schema/fields';
+import { lookup, reference } from '../../collection/relations';
 
 describe('Relations', () => {
   // Authors collection
@@ -23,17 +24,17 @@ describe('Relations', () => {
       authorId: objectId(),
     },
     {
-      relations: (r) => ({
-        author: r.lookup(authors, {
+      relations: {
+        author: lookup(authors, {
           localField: 'authorId',
           foreignField: '_id',
           one: true,
         }),
-        authorRef: r.reference(authors, {
+        authorRef: reference(authors, {
           localField: 'authorId',
           foreignField: '_id',
         }),
-      }),
+      },
     }
   );
 

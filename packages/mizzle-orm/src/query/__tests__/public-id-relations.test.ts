@@ -6,6 +6,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, publicId } from '../../schema/fields';
+import { lookup, reference } from '../../collection/relations';
 
 describe('Public ID Relations', () => {
   // Organizations with public IDs
@@ -24,19 +25,19 @@ describe('Public ID Relations', () => {
       orgId: string(), // References organization.id (a public ID)
     },
     {
-      relations: (r) => ({
+      relations: {
         // REFERENCE: Validates that orgId points to existing organization by public ID
-        organization: r.reference(organizations, {
+        organization: reference(organizations, {
           localField: 'orgId',
           foreignField: 'id', // References the public ID field
         }),
         // LOOKUP: Populates organization data using public ID
-        organizationData: r.lookup(organizations, {
+        organizationData: lookup(organizations, {
           localField: 'orgId',
           foreignField: 'id', // Looks up by public ID
           one: true,
         }),
-      }),
+      },
     }
   );
 
@@ -50,19 +51,19 @@ describe('Public ID Relations', () => {
       authorId: string(), // References user.id (a public ID)
     },
     {
-      relations: (r) => ({
+      relations: {
         // REFERENCE: Validates authorId exists
-        author: r.reference(users, {
+        author: reference(users, {
           localField: 'authorId',
           foreignField: 'id', // References the public ID field
         }),
         // LOOKUP: Populates author data using public ID
-        authorData: r.lookup(users, {
+        authorData: lookup(users, {
           localField: 'authorId',
           foreignField: 'id', // Looks up by public ID
           one: true,
         }),
-      }),
+      },
     }
   );
 
@@ -205,14 +206,14 @@ describe('Public ID Relations', () => {
         authorId: string(), // References user public ID
       },
       {
-        relations: (r) => ({
+        relations: {
           // Primary lookup by public ID
-          authorData: r.lookup(users, {
+          authorData: lookup(users, {
             localField: 'authorId',
             foreignField: 'id',
             one: true,
           }),
-        }),
+        },
       }
     );
 

@@ -9,6 +9,7 @@ import {
   number,
   date,
   createMongoOrm,
+  lookup,
 } from '../src/index';
 
 // ============ COLLECTIONS ============
@@ -31,14 +32,14 @@ const users = mongoCollection(
     createdAt: date().defaultNow(),
   },
   {
-    relations: (r) => ({
+    relations: {
       // LOOKUP: Populates organization data
-      organization: r.lookup(organizations, {
+      organization: lookup(organizations, {
         localField: 'orgId',
         foreignField: '_id',
         one: true,
       }),
-    }),
+    },
   }
 );
 
@@ -54,14 +55,14 @@ const posts = mongoCollection(
     createdAt: date().defaultNow(),
   },
   {
-    relations: (r) => ({
+    relations: {
       // LOOKUP: Populates author data
-      author: r.lookup(users, {
+      author: lookup(users, {
         localField: 'authorId',
         foreignField: '_id',
         one: true,
       }),
-    }),
+    },
   }
 );
 
@@ -76,18 +77,18 @@ const comments = mongoCollection(
     createdAt: date().defaultNow(),
   },
   {
-    relations: (r) => ({
-      post: r.lookup(posts, {
+    relations: {
+      post: lookup(posts, {
         localField: 'postId',
         foreignField: '_id',
         one: true,
       }),
-      author: r.lookup(users, {
+      author: lookup(users, {
         localField: 'authorId',
         foreignField: '_id',
         one: true,
       }),
-    }),
+    },
   }
 );
 

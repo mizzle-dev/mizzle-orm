@@ -7,6 +7,9 @@
 export { createMongoOrm, defineCollections } from './orm/orm';
 export { mongoCollection } from './collection/collection';
 
+// Relation factory functions
+export { lookup, reference, embed } from './collection/relations';
+
 // Field factory functions
 export {
   string,
