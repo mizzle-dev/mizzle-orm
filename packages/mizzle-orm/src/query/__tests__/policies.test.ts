@@ -46,11 +46,10 @@ describe('Policies', () => {
   const user2_Id = new ObjectId();
 
   beforeAll(async () => {
-    orm = await createTestOrm([documents]);
+    orm = await createTestOrm({ documents });
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 

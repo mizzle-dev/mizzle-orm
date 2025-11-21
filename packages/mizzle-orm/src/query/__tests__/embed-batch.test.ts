@@ -68,7 +68,6 @@ describe('Batch Embed Optimization', () => {
     expect(post1.author?.name).toBe('Alice');
     expect(post2.author?.name).toBe('Alice');
 
-    await orm.close();
   });
 
   it('should optimize array embed lookups by batching IDs', async () => {
@@ -119,7 +118,6 @@ describe('Batch Embed Optimization', () => {
     expect(post.tags?.[1].name).toBe('News');
     expect(post.tags?.[2].name).toBe('Sports');
 
-    await orm.close();
   });
 
   it('should batch reverse embed propagations with updateMany', async () => {
@@ -177,6 +175,5 @@ describe('Batch Embed Optimization', () => {
       expect(post.author?.email).toBe('alice.smith@example.com');
     }
 
-    await orm.close();
   });
 });

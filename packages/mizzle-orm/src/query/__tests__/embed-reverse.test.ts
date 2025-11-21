@@ -88,7 +88,6 @@ describe('Reverse Embeds - keepFresh', () => {
     expect(refreshedPost?.author?.email).toBe('alice.smith@example.com');
     expect(refreshedPost?.author?._id).toBe(author._id.toHexString());
 
-    await orm.close();
   });
 
   it('should only update specified fields in watchFields', async () => {
@@ -167,6 +166,5 @@ describe('Reverse Embeds - keepFresh', () => {
     expect(article2?.tag?.name).toBe('Technology');
     expect(article2?.tag?.color).toBe('blue');
 
-    await orm.close();
   });
 });

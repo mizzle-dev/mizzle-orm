@@ -123,8 +123,6 @@ describe('Forward Embeds - Simple', () => {
     expect(post.author?.email).toBe('alice@example.com');
     expect(post.author?._id).toBe(author._id.toHexString());
     expect(post.author).not.toHaveProperty('bio');
-
-    await orm.close();
   });
 });
 
@@ -158,8 +156,6 @@ describe('Forward Embeds - Array', () => {
     expect(post.tags[0].color).toBe('blue');
     expect(post.tags[1].name).toBe('News');
     expect(post.tags[1].color).toBe('red');
-
-    await orm.close();
   });
 });
 
@@ -183,8 +179,6 @@ describe('Forward Embeds - In-Place', () => {
 
     expect(workflow.directory.name).toBe('Legal');
     expect(workflow.directory.type).toBe('department');
-
-    await orm.close();
   });
 });
 
@@ -244,7 +238,5 @@ describe('Forward Embeds - Custom embedIdField', () => {
     expect(typeof post.author?._id).toBe('string');
     expect(post.author?.name).toBe('Bob');
     expect(post.author?.email).toBe('bob@example.com');
-
-    await orm.close();
   });
 });

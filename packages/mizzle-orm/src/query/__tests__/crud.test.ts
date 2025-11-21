@@ -23,11 +23,10 @@ describe('CRUD Operations', () => {
   });
 
   beforeAll(async () => {
-    orm = await createTestOrm([users]);
+    orm = await createTestOrm({ users });
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 

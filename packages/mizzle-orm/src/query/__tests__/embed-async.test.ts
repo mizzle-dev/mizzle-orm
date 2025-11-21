@@ -81,7 +81,6 @@ describe('Async Propagation Strategy', () => {
     expect(postAfterAsync?.author?.name).toBe('Alice Smith');
     expect(postAfterAsync?.author?.email).toBe('alice.smith@example.com');
 
-    await orm.close();
   });
 
   it('should handle sync strategy (default behavior)', async () => {
@@ -139,7 +138,6 @@ describe('Async Propagation Strategy', () => {
     expect(updatedPost?.author?.name).toBe('Bob Smith');
     expect(updatedPost?.author?.email).toBe('bob.smith@example.com');
 
-    await orm.close();
   });
 
   it('should use sync strategy by default when keepFresh: true', async () => {
@@ -192,6 +190,5 @@ describe('Async Propagation Strategy', () => {
     const updatedPost = await db.posts.findById(post._id);
     expect(updatedPost?.author?.name).toBe('Charlie Brown');
 
-    await orm.close();
   });
 });

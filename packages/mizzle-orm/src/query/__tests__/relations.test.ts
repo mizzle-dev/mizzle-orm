@@ -52,7 +52,6 @@ describe('Relations', () => {
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 

@@ -71,7 +71,6 @@ describe('Embed Delete - Nullify Strategy', () => {
     expect(updatedPost?.author).toBeNull();
     expect(updatedPost?.authorId).toBeNull(); // Reference also nullified
 
-    await orm.close();
   });
 });
 
@@ -128,7 +127,6 @@ describe('Embed Delete - Clear Strategy', () => {
     expect(updatedPost?.authorId).toEqual(author._id); // Reference kept
     expect(updatedPost?.author).toBeNull(); // Embed cleared
 
-    await orm.close();
   });
 });
 
@@ -191,7 +189,6 @@ describe('Embed Delete - Cascade Strategy', () => {
     expect(await db.posts.findById(post2._id)).toBeNull();
     expect(await db.posts.count()).toBe(0);
 
-    await orm.close();
   });
 });
 
@@ -251,6 +248,5 @@ describe('Embed Delete - No Action (default)', () => {
     expect(updatedPost?.author?.name).toBe('Dave'); // Still has old data
     expect(updatedPost?.author?.email).toBe('dave@example.com');
 
-    await orm.close();
   });
 });

@@ -98,7 +98,6 @@ describe('Reverse Embeds - Array Strategy', () => {
     expect(unchangedTag?.name).toBe('News');
     expect(unchangedTag?.color).toBe('red');
 
-    await orm.close();
   });
 });
 
@@ -172,6 +171,5 @@ describe('Reverse Embeds - In-Place Strategy', () => {
     expect(refreshedWorkflow?.directory.type).toBe('division');
     expect(refreshedWorkflow?.directory._id).toEqual(directory._id);
 
-    await orm.close();
   });
 });

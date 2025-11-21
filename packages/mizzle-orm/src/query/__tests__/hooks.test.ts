@@ -59,11 +59,10 @@ describe('Hooks', () => {
   );
 
   beforeAll(async () => {
-    orm = await createTestOrm([products]);
+    orm = await createTestOrm({ products });
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 
