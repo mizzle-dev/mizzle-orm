@@ -109,6 +109,26 @@ export interface QueryOptions<TRelationTargets extends RelationTargets = {}> {
   limit?: number;
   skip?: number;
   include?: IncludeConfig<TRelationTargets>;
+  refreshEmbeds?: Array<keyof TRelationTargets & string>; // Re-fetch fresh embed data (read-only, not persisted)
+}
+
+/**
+ * Options for manual embed refresh
+ */
+export interface RefreshEmbedsOptions<TDoc = any> {
+  filter?: Filter<TDoc>; // Optional filter for which documents to refresh
+  batchSize?: number; // Process in batches (default: 100)
+  dryRun?: boolean; // Preview changes without persisting (default: false)
+}
+
+/**
+ * Statistics from a refresh operation
+ */
+export interface RefreshStats {
+  matched: number; // Documents that matched the filter
+  updated: number; // Documents successfully updated
+  errors: number; // Errors encountered
+  skipped: number; // Documents skipped (source not found)
 }
 
 /**
@@ -150,6 +170,12 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any, TRel
   // Aggregation
   count(filter?: Filter<TDoc>): Promise<number>;
   aggregate(pipeline: any[]): Promise<any[]>;
+
+  // Embed refresh
+  refreshEmbeds(
+    relationName: keyof TRelationTargets & string,
+    options?: RefreshEmbedsOptions<TDoc>
+  ): Promise<RefreshStats>;
 
   // Raw access
   rawCollection(): any;

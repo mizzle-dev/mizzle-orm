@@ -171,7 +171,14 @@ export class CollectionFacade<
       cursor = cursor.limit(options.limit);
     }
 
-    return cursor.toArray() as Promise<TDoc[]>;
+    let results = await cursor.toArray() as TDoc[];
+
+    // Query-time refresh: Re-fetch specified embeds (read-only, not persisted)
+    if (options?.refreshEmbeds && options.refreshEmbeds.length > 0) {
+      results = await this.refreshEmbedsInDocuments(results, options.refreshEmbeds);
+    }
+
+    return results;
   }
 
   /**
@@ -913,5 +920,125 @@ export class CollectionFacade<
         }
       }
     }
+  }
+
+  /**
+   * Refresh embeds in documents (query-time, read-only)
+   * Re-fetches specified embed relations with fresh data from source
+   */
+  private async refreshEmbedsInDocuments(
+    docs: TDoc[],
+    relationNames: string[],
+  ): Promise<TDoc[]> {
+    if (docs.length === 0) return docs;
+
+    const relations = this.collectionDef._meta.relations || {};
+
+    for (const relationName of relationNames) {
+      const relation = relations[relationName];
+      if (!relation || relation.type !== 'embed') {
+        continue; // Skip non-embed relations
+      }
+
+      const embedRelation = relation as any;
+      const config = embedRelation.forward;
+      if (!config) continue;
+
+      // Re-process forward embeds for these documents
+      docs = await Promise.all(
+        docs.map(async (doc) => {
+          return (await this.relationHelper.processForwardEmbeds(
+            doc as any,
+            [relationName],
+          )) as TDoc;
+        }),
+      );
+    }
+
+    return docs;
+  }
+
+  /**
+   * Manual batch refresh of embeds (persists updates to database)
+   * Useful for maintenance, migrations, or fixing stale data
+   */
+  async refreshEmbeds(
+    relationName: string,
+    options: {
+      filter?: Filter<TDoc>;
+      batchSize?: number;
+      dryRun?: boolean;
+    } = {},
+  ): Promise<{ matched: number; updated: number; errors: number; skipped: number }> {
+    const { filter = {}, batchSize = 100, dryRun = false } = options;
+
+    const relations = this.collectionDef._meta.relations || {};
+    const relation = relations[relationName];
+
+    if (!relation || relation.type !== 'embed') {
+      throw new Error(`Relation '${relationName}' is not an EMBED relation`);
+    }
+
+    const embedRelation = relation as any;
+    const config = embedRelation.forward;
+    if (!config) {
+      throw new Error(`Relation '${relationName}' does not have forward embed config`);
+    }
+
+    const stats = {
+      matched: 0,
+      updated: 0,
+      errors: 0,
+      skipped: 0,
+    };
+
+    const finalFilter = this.applyPolicies(filter);
+
+    // Count total documents
+    stats.matched = await this.collection.countDocuments(finalFilter, {
+      session: this.ctx.session,
+    });
+
+    if (stats.matched === 0) {
+      return stats;
+    }
+
+    // Process in batches
+    let skip = 0;
+    while (skip < stats.matched) {
+      const batch = await this.collection
+        .find(finalFilter, { session: this.ctx.session })
+        .skip(skip)
+        .limit(batchSize)
+        .toArray();
+
+      for (const doc of batch) {
+        try {
+          // Re-process forward embed for this document
+          const refreshedDoc = await this.relationHelper.processForwardEmbeds(
+            doc as any,
+            [relationName],
+          );
+
+          // Update the document if not in dry-run mode
+          if (!dryRun) {
+            await this.collection.updateOne(
+              { _id: doc._id },
+              { $set: { [relationName]: (refreshedDoc as any)[relationName] } },
+              { session: this.ctx.session },
+            );
+          }
+
+          stats.updated++;
+        } catch (error) {
+          stats.errors++;
+          console.error(`Error refreshing embed for document ${doc._id}:`, error);
+        }
+      }
+
+      skip += batchSize;
+    }
+
+    return stats;
   }
 }
