@@ -84,8 +84,10 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
  * }, {
  *   relations: {
  *     author: embed(authors, {
- *       from: 'authorId',
- *       fields: ['name', 'email', 'avatar'],
+ *       forward: {
+ *         from: 'authorId',
+ *         fields: ['name', 'email', 'avatar'],
+ *       },
  *       keepFresh: true, // Auto-update when author changes
  *     })
  *   }
@@ -97,8 +99,10 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
  * }, {
  *   relations: {
  *     tags: embed(tags, {
- *       from: 'tagIds',
- *       fields: ['name', 'color'],
+ *       forward: {
+ *         from: 'tagIds',
+ *         fields: ['name', 'color'],
+ *       }
  *     })
  *   }
  * });
@@ -114,8 +118,10 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
  * }, {
  *   relations: {
  *     directory: embed(directories, {
- *       from: 'workflow.refDirectory._id', // ._id → inplace strategy
- *       fields: ['name', 'type'],
+ *       forward: {
+ *         from: 'workflow.refDirectory._id', // ._id → inplace strategy
+ *         fields: ['name', 'type'],
+ *       }
  *     })
  *   }
  * });
@@ -124,11 +130,11 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
 export function embed<
   TOther extends SchemaDefinition,
   TTargets extends RelationTargets,
-  TConfig extends Omit<EmbedRelation, 'type' | 'sourceCollection'>,
+  const TConfig, // const forces literal type preservation
 >(
   sourceCollection: CollectionDefinition<TOther, TTargets>,
-  config: TConfig & {}, // & {} forces literal type preservation
-): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>, TConfig> {
+  config: TConfig,
+): TypedRelation<EmbedRelation<any, any>, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.EMBED,
     sourceCollection: sourceCollection._meta.name,

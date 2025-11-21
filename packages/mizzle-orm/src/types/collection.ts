@@ -87,19 +87,23 @@ export interface ReverseEmbedConfig {
 
 /**
  * Forward embed configuration
+ * Generic to preserve literal types for proper type inference
+ *
+ * @template TFrom - The literal type of the 'from' field path
+ * @template TPaths - The literal type of the 'paths' array
  */
-export interface ForwardEmbedConfig {
+export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
   // ==== ID Location (Required - one or the other) ====
 
   // Simple: single field or path
-  from?: string;
+  from?: TFrom;
   // Examples:
   // - 'authorId' → separate strategy
   // - 'author._id' → inplace strategy
   // - 'workflow.items[].refId' → array embed
 
   // Complex: multiple paths
-  paths?: string[];
+  paths?: TPaths;
   // Examples:
   // - ['workflow.required[].ref._id', 'workflow.optional[].ref._id']
 
@@ -121,13 +125,14 @@ export interface ForwardEmbedConfig {
 
 /**
  * Embed relation configuration (write-time denormalization)
+ * Generic to preserve literal types from ForwardEmbedConfig
  */
-export interface EmbedRelation {
+export interface EmbedRelation<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
   type: RelationType.EMBED;
   sourceCollection: string;
 
   // New forward embed config
-  forward?: ForwardEmbedConfig;
+  forward?: ForwardEmbedConfig<TFrom, TPaths>;
 
   // Legacy support (for backwards compatibility during migration)
   strategy?: 'denormalized';
@@ -151,7 +156,7 @@ export interface LookupRelation {
 /**
  * Any relation type
  */
-export type AnyRelation = ReferenceRelation | EmbedRelation | LookupRelation;
+export type AnyRelation = ReferenceRelation | EmbedRelation<any, any> | LookupRelation;
 
 /**
  * Relations definition

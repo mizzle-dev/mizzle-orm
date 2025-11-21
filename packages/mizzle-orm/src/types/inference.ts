@@ -33,10 +33,13 @@ type IsArrayField<TField> = TField extends { _item: any }
 
 /**
  * Helper to extract the 'from' path from embed config
+ * Uses index access to preserve literal types
  */
-type ExtractFromPath<TConfig> = TConfig extends { forward?: { from?: infer TFrom } }
+type ExtractFromPath<TConfig> = TConfig extends { forward: { from: infer TFrom } }
   ? TFrom
-  : never;
+  : TConfig extends { forward?: { from?: infer TFrom } }
+    ? TFrom
+    : never;
 
 /**
  * Helper to infer cardinality of an embed based on config and parent schema
@@ -44,13 +47,15 @@ type ExtractFromPath<TConfig> = TConfig extends { forward?: { from?: infer TFrom
 type InferEmbedCardinality<
   TParentSchema extends SchemaDefinition,
   TConfig,
-> = TConfig extends { forward?: { paths?: any[] } }
+> = TConfig extends { forward: { paths: any[] } }
   ? 'many' // Multiple paths = array
-  : ExtractFromPath<TConfig> extends keyof TParentSchema
-    ? IsArrayField<TParentSchema[ExtractFromPath<TConfig>]> extends true
-      ? 'many' // Source field is array = array embed
-      : 'one' // Source field is single = single embed
-    : 'unknown'; // Can't determine
+  : TConfig extends { forward?: { paths?: any[] } }
+    ? 'many' // Multiple paths = array
+    : ExtractFromPath<TConfig> extends keyof TParentSchema
+      ? IsArrayField<TParentSchema[ExtractFromPath<TConfig>]> extends true
+        ? 'many' // Source field is array = array embed
+        : 'one' // Source field is single = single embed
+      : 'unknown'; // Can't determine
 
 /**
  * Helper to create embedded document type
