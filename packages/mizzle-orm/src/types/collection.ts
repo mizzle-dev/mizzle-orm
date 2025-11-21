@@ -131,25 +131,6 @@ export type ExtractRelationTargets<TRelations> = {
     : never;
 };
 
-/**
- * Relation builder
- */
-export interface RelationBuilder<_TSchema extends SchemaDefinition = SchemaDefinition> {
-  reference<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
-    otherCollection: CollectionDefinition<TOther, TTargets>,
-    config: Omit<ReferenceRelation, 'type' | 'targetCollection'>,
-  ): TypedRelation<ReferenceRelation, CollectionDefinition<TOther, TTargets>>;
-
-  embed<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
-    sourceCollection: CollectionDefinition<TOther, TTargets>,
-    config: Omit<EmbedRelation, 'type' | 'sourceCollection'>,
-  ): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>>;
-
-  lookup<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
-    targetCollection: CollectionDefinition<TOther, TTargets>,
-    config: Omit<LookupRelation, 'type' | 'targetCollection'>,
-  ): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>>;
-}
 
 /**
  * Policy filter function
@@ -271,10 +252,7 @@ export interface CollectionOptions<
 > {
   indexes?: IndexDefinitionFn<TSchema>;
   searchIndexes?: any; // TODO: Atlas Search index definitions
-  relations?: (
-    r: RelationBuilder<TSchema>,
-    collections: Record<string, CollectionDefinition<any, any>>,
-  ) => TRels;
+  relations?: TRels; // Now accepts relation object directly (import { lookup, reference, embed } from 'mizzle-orm')
   policies?: PolicyConfig<TSchema>;
   audit?: CollectionAuditConfig;
   hooks?: Hooks<TSchema>;

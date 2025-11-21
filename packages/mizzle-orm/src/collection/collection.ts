@@ -15,7 +15,6 @@ import type {
   ExtractRelationTargets,
 } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
-import { createRelationBuilder } from './builders';
 
 /**
  * Define a MongoDB collection without relations
@@ -78,10 +77,7 @@ export function mongoCollection<
   // Build relations
   let relations: Relations = {};
   if (options.relations) {
-    const relationBuilder = createRelationBuilder<TSchema>();
-    // Get typed relations from callback, but store as runtime Relations
-    const typedRelations = options.relations(relationBuilder, {} as any);
-    relations = typedRelations as any as Relations;
+    relations = options.relations as any as Relations;
   }
 
   // Policies (plain object)
