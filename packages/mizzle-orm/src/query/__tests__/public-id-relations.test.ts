@@ -82,7 +82,6 @@ describe('Public ID Relations', () => {
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 

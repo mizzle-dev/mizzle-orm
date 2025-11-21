@@ -6,17 +6,34 @@ import type { CollectionDefinition, RelationTargets } from './collection';
 import type { InferDocument } from './inference';
 
 /**
- * Configuration for nested includes on a related collection
+ * Extract the target CollectionDefinition from a TypedRelation
  */
-export type NestedIncludeConfig<TTarget extends CollectionDefinition<any, any>> =
-  TTarget extends CollectionDefinition<any, infer TNestedRelations>
+type ExtractTarget<TRelation> = TRelation extends { _targetCollection?: infer T }
+  ? T extends CollectionDefinition<any, any>
+    ? T
+    : never
+  : never;
+
+/**
+ * Configuration for nested includes on a related collection
+ * Can accept either a CollectionDefinition directly or extract from TypedRelation
+ */
+export type NestedIncludeConfig<TTargetOrRelation> =
+  ExtractTarget<TTargetOrRelation> extends CollectionDefinition<any, infer TNestedRelations>
     ? {
         include?: IncludeConfig<TNestedRelations>;
         where?: Record<string, any>;
         sort?: Record<string, 1 | -1>;
         limit?: number;
       }
-    : never;
+    : TTargetOrRelation extends CollectionDefinition<any, infer TNestedRelations>
+      ? {
+          include?: IncludeConfig<TNestedRelations>;
+          where?: Record<string, any>;
+          sort?: Record<string, 1 | -1>;
+          limit?: number;
+        }
+      : never;
 
 /**
  * Include configuration for a collection
@@ -39,20 +56,24 @@ export type IncludeConfig<TRelationTargets extends RelationTargets> =
 type AddPopulatedField<
   TDoc,
   TRelationName extends string,
-  TTarget extends CollectionDefinition<any, any>,
+  TRelation,
   TConfig,
-> = TConfig extends NestedIncludeConfig<TTarget>
-  ? TTarget extends CollectionDefinition<any, infer TNestedRelations>
-    ? TDoc & {
-        [K in TRelationName]: TConfig['include'] extends IncludeConfig<TNestedRelations>
-          ? WithIncluded<InferDocument<TTarget>, TConfig['include'], TNestedRelations>
-          : InferDocument<TTarget>;
-      }
+> = ExtractTarget<TRelation> extends CollectionDefinition<any, any>
+  ? TConfig extends NestedIncludeConfig<ExtractTarget<TRelation>>
+    ? ExtractTarget<TRelation> extends CollectionDefinition<any, infer TNestedRelations>
+      ? TDoc & {
+          [K in TRelationName]: TConfig['include'] extends IncludeConfig<TNestedRelations>
+            ? WithIncluded<InferDocument<ExtractTarget<TRelation>>, TConfig['include'], TNestedRelations>
+            : InferDocument<ExtractTarget<TRelation>>;
+        }
+      : TDoc & {
+          [K in TRelationName]: InferDocument<ExtractTarget<TRelation>>;
+        }
     : TDoc & {
-        [K in TRelationName]: InferDocument<TTarget>;
+        [K in TRelationName]: InferDocument<ExtractTarget<TRelation>> | null;
       }
   : TDoc & {
-      [K in TRelationName]: InferDocument<TTarget> | null;
+      [K in TRelationName]: any; // Fallback if target can't be extracted
     };
 
 /**

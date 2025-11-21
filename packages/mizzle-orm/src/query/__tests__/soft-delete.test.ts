@@ -19,11 +19,10 @@ describe('Soft Delete', () => {
   });
 
   beforeAll(async () => {
-    orm = await createTestOrm([tasks]);
+    orm = await createTestOrm({ tasks });
   });
 
   afterAll(async () => {
-    await orm.close();
     await teardownTestDb();
   });
 
@@ -125,17 +124,15 @@ describe('Soft Delete', () => {
         name: string(),
       });
 
-      const testOrm = await createTestOrm([noSoftDelete]);
+      const testOrm = await createTestOrm({ noSoftDelete });
       const ctx = testOrm.createContext({});
       const db = testOrm.withContext(ctx);
 
-      const doc = await db.no_soft_delete.create({ name: 'Test' });
+      const doc = await db.noSoftDelete.create({ name: 'Test' });
 
-      await expect(db.no_soft_delete.softDelete(doc._id)).rejects.toThrow(
+      await expect(db.noSoftDelete.softDelete(doc._id)).rejects.toThrow(
         'Soft delete not configured for this collection'
       );
-
-      await testOrm.close();
     });
   });
 });

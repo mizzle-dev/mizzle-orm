@@ -2,10 +2,11 @@
  * Collection facade - provides type-safe CRUD operations for a collection
  */
 
-import { Collection, ObjectId, type Db, type Document, type Filter } from 'mongodb';
+import { Collection, ObjectId, type Db, type Document } from 'mongodb';
 import type { CollectionDefinition, RelationTargets } from '../types/collection';
 import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
+import type { Filter } from '../types/inference';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -28,16 +29,46 @@ export class CollectionFacade<
   private collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>;
   private ctx: OrmContext;
   private relationHelper: RelationHelper<TDoc>;
+  private db: Db;
+  private reverseEmbedRegistry?: Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any }>
+  >;
+  private collectionRegistry?: Map<string, CollectionDefinition>;
+  private deleteRegistry?: Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any; deleteAction: string }>
+  >;
 
   constructor(
     db: Db,
     collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>,
     ctx: OrmContext,
+    options?: {
+      reverseEmbedRegistry?: Map<
+        string,
+        Array<{ targetCollectionName: string; relationName: string; config: any }>
+      >;
+      collectionRegistry?: Map<string, CollectionDefinition>;
+      deleteRegistry?: Map<
+        string,
+        Array<{
+          targetCollectionName: string;
+          relationName: string;
+          config: any;
+          deleteAction: string;
+        }>
+      >;
+    },
   ) {
+    this.db = db;
     this.collection = db.collection<TDoc>(collectionDef._meta.name);
     this.collectionDef = collectionDef;
     this.ctx = ctx;
     this.relationHelper = new RelationHelper<TDoc>(db, collectionDef, ctx);
+    this.reverseEmbedRegistry = options?.reverseEmbedRegistry;
+    this.collectionRegistry = options?.collectionRegistry;
+    this.deleteRegistry = options?.deleteRegistry;
   }
 
   /**
@@ -141,7 +172,14 @@ export class CollectionFacade<
       cursor = cursor.limit(options.limit);
     }
 
-    return cursor.toArray() as Promise<TDoc[]>;
+    let results = await cursor.toArray() as TDoc[];
+
+    // Query-time refresh: Re-fetch specified embeds (read-only, not persisted)
+    if (options?.refreshEmbeds && options.refreshEmbeds.length > 0) {
+      results = await this.refreshEmbedsInDocuments(results, options.refreshEmbeds);
+    }
+
+    return results;
   }
 
   /**
@@ -177,6 +215,9 @@ export class CollectionFacade<
 
     // Validate references
     await this.relationHelper.validateReferences(finalDoc as any);
+
+    // Process forward embeds (fetch and embed referenced data)
+    finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
 
     // Insert
     const result = await this.collection.insertOne(finalDoc as any, {
@@ -246,6 +287,9 @@ export class CollectionFacade<
     // Validate references
     await this.relationHelper.validateReferences(finalUpdate as any);
 
+    // Process forward embeds (fetch and embed referenced data)
+    finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+
     // Update
     const result = await this.collection.findOneAndUpdate(
       finalFilter,
@@ -264,6 +308,9 @@ export class CollectionFacade<
     if (this.collectionDef._meta.hooks.afterUpdate) {
       await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
     }
+
+    // Propagate reverse embeds if this collection is a source for any embeds
+    await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
 
     return result as TDoc;
   }
@@ -325,6 +372,11 @@ export class CollectionFacade<
     // Run after hooks
     if (result.deletedCount > 0 && this.collectionDef._meta.hooks.afterDelete) {
       await this.collectionDef._meta.hooks.afterDelete(this.ctx, doc as any);
+    }
+
+    // Handle delete cascades
+    if (result.deletedCount > 0) {
+      await this.handleDeleteCascades(doc as TDoc);
     }
 
     return result.deletedCount > 0;
@@ -512,5 +564,482 @@ export class CollectionFacade<
       }
     }
     return null;
+  }
+
+  /**
+   * Propagate changes to documents that have embedded this source
+   */
+  private async propagateReverseEmbeds(
+    updatedDoc: TDoc,
+    updateData: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.reverseEmbedRegistry || !this.collectionRegistry) {
+      return;
+    }
+
+    const collectionName = this.collectionDef._meta.name;
+    const targets = this.reverseEmbedRegistry.get(collectionName);
+
+    if (!targets || targets.length === 0) {
+      return;
+    }
+
+    for (const target of targets) {
+      const { targetCollectionName, relationName, config } = target;
+
+      // Check if we should propagate (watchFields logic)
+      const shouldPropagate = this.shouldPropagateUpdate(config, updateData);
+      if (!shouldPropagate) {
+        continue;
+      }
+
+      // Check if async strategy is enabled
+      const reverseConfig = config.reverse;
+      const strategy = reverseConfig?.strategy || 'sync';
+
+      if (strategy === 'async') {
+        // Defer propagation using setTimeout (non-blocking)
+        setTimeout(() => {
+          this.executePropagation(updatedDoc, config, targetCollectionName, relationName).catch(
+            (err) => {
+              console.error('Error in async embed propagation:', err);
+            },
+          );
+        }, 0);
+      } else {
+        // Execute synchronously
+        await this.executePropagation(updatedDoc, config, targetCollectionName, relationName);
+      }
+    }
+  }
+
+  /**
+   * Execute the actual propagation logic
+   */
+  private async executePropagation(
+    updatedDoc: TDoc,
+    config: any,
+    targetCollectionName: string,
+    relationName: string,
+  ): Promise<void> {
+
+      // Build new embedded data
+      const embedIdField = config.embedIdField || '_id';
+      const newEmbedData = this.extractFieldsForEmbed(
+        updatedDoc as any,
+        config.fields,
+        embedIdField,
+      );
+
+      // Determine which field to search by (the ID that was embedded)
+      const sourceIdValue = (updatedDoc as any)[embedIdField];
+      const sourceIdString =
+        sourceIdValue instanceof ObjectId
+          ? sourceIdValue.toHexString()
+          : String(sourceIdValue);
+
+      // Update embedded field in target collection
+      const targetCollection = this.db.collection(targetCollectionName);
+
+      // Determine embed strategy from 'from' config
+      const fromPath = config.from;
+      const isInPlace = fromPath.includes('.'); // e.g., 'directory._id'
+      const isArray = fromPath.endsWith('s') && !isInPlace; // heuristic: 'tagIds' vs 'tagId'
+
+      if (isInPlace) {
+        // In-place strategy: data merged into existing object
+        // Extract base path: 'directory._id' → 'directory'
+        const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+
+        // For in-place embeds, the _id might be stored as ObjectId (not string)
+        // Try both string and ObjectId in filter
+        const filter = {
+          $or: [
+            { [`${basePath}._id`]: sourceIdString },
+            { [`${basePath}._id`]: sourceIdValue },
+          ],
+        };
+
+        // Build $set object with nested paths
+        const updateFields: Record<string, any> = {};
+        for (const [key, value] of Object.entries(newEmbedData)) {
+          if (key !== '_id') {
+            updateFields[`${basePath}.${key}`] = value;
+          }
+        }
+
+        await targetCollection.updateMany(
+          filter,
+          { $set: updateFields },
+          { session: this.ctx.session },
+        );
+      } else {
+        // Separate or Array strategy: embed stored in relationName field
+        const filter = {
+          [`${relationName}._id`]: sourceIdString,
+        };
+
+        if (isArray) {
+          // Array strategy: update specific element in array
+          await targetCollection.updateMany(
+            filter,
+            {
+              $set: {
+                [`${relationName}.$[elem]`]: newEmbedData,
+              },
+            },
+            {
+              arrayFilters: [{ 'elem._id': sourceIdString }],
+              session: this.ctx.session,
+            } as any,
+          );
+        } else {
+          // Separate strategy: replace entire embed
+          await targetCollection.updateMany(
+            filter,
+            { $set: { [relationName]: newEmbedData } },
+            { session: this.ctx.session },
+          );
+        }
+      }
+  }
+
+  /**
+   * Check if update should be propagated based on watchFields
+   */
+  private shouldPropagateUpdate(
+    config: any,
+    updateData: Record<string, unknown>,
+  ): boolean {
+    const reverseConfig = config.reverse;
+
+    // If no watchFields specified, always propagate
+    if (!reverseConfig?.watchFields || reverseConfig.watchFields.length === 0) {
+      return true;
+    }
+
+    // Check if any of the updated fields are in watchFields
+    const updatedFields = Object.keys(updateData);
+    const watchFields = reverseConfig.watchFields;
+
+    return updatedFields.some((field) => watchFields.includes(field));
+  }
+
+  /**
+   * Extract specified fields from document for embedding
+   * ALWAYS includes the ID field from embedIdField config
+   */
+  private extractFieldsForEmbed(
+    doc: Document,
+    fields: string[] | Record<string, 1 | 0>,
+    embedIdField: string = '_id',
+  ): Document {
+    if (Array.isArray(fields)) {
+      const result: Document = {};
+
+      // Always include the ID field first (convert to string)
+      if (embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof ObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const field of fields) {
+        if (field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
+    } else {
+      // Projection syntax
+      const result: Document = {};
+
+      // Always include the ID field unless explicitly excluded (convert to string)
+      if (fields._id !== 0 && embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof ObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const [field, include] of Object.entries(fields)) {
+        if (include === 1 && field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
+    }
+  }
+
+  /**
+   * Handle delete cascades when a source document is deleted
+   */
+  private async handleDeleteCascades(deletedDoc: TDoc): Promise<void> {
+    if (!this.deleteRegistry) {
+      return;
+    }
+
+    const collectionName = this.collectionDef._meta.name;
+    const targets = this.deleteRegistry.get(collectionName);
+
+    if (!targets || targets.length === 0) {
+      return;
+    }
+
+    for (const target of targets) {
+      const { targetCollectionName, relationName, config, deleteAction } = target;
+
+      const embedIdField = config.embedIdField || '_id';
+      const sourceIdValue = (deletedDoc as any)[embedIdField];
+      const sourceIdString =
+        sourceIdValue instanceof ObjectId
+          ? sourceIdValue.toHexString()
+          : String(sourceIdValue);
+
+      const targetCollection = this.db.collection(targetCollectionName);
+
+      // Determine embed strategy from 'from' config
+      const fromPath = config.from;
+      const isInPlace = fromPath.includes('.'); // e.g., 'directory._id'
+      const isArray = fromPath.endsWith('s') && !isInPlace;
+
+      if (deleteAction === 'cascade') {
+        // Delete entire document
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          await targetCollection.deleteMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: delete documents containing this embed in array
+          await targetCollection.deleteMany(
+            { [`${relationName}._id`]: sourceIdString },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy
+          await targetCollection.deleteMany(
+            { [`${relationName}._id`]: sourceIdString },
+            { session: this.ctx.session },
+          );
+        }
+      } else if (deleteAction === 'nullify') {
+        // Set both embed and reference to null
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          await targetCollection.updateMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            {
+              $set: {
+                [basePath]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: remove the specific embed from array and nullify reference
+          const refField = fromPath; // e.g., 'tagIds'
+          // Remove from embed array
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $pull: { [relationName]: { _id: sourceIdString } } as any,
+            },
+            { session: this.ctx.session },
+          );
+          // Remove from reference array
+          await targetCollection.updateMany(
+            { [refField]: sourceIdValue },
+            {
+              $pull: { [refField]: sourceIdValue } as any,
+            },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy: nullify both embed and reference
+          const refField = fromPath; // e.g., 'authorId'
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $set: {
+                [relationName]: null,
+                [refField]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        }
+      } else if (deleteAction === 'clear') {
+        // Clear embed but keep reference
+        if (isInPlace) {
+          const basePath = fromPath.substring(0, fromPath.lastIndexOf('.'));
+          // Clear all fields except _id in the nested object
+          const unsetFields: Record<string, any> = {};
+          for (const field of config.fields) {
+            unsetFields[`${basePath}.${field}`] = '';
+          }
+          await targetCollection.updateMany(
+            {
+              $or: [
+                { [`${basePath}._id`]: sourceIdString },
+                { [`${basePath}._id`]: sourceIdValue },
+              ],
+            },
+            {
+              $unset: unsetFields,
+            },
+            { session: this.ctx.session },
+          );
+        } else if (isArray) {
+          // Array embeds: remove from embed array but keep in reference array
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $pull: { [relationName]: { _id: sourceIdString } } as any,
+            },
+            { session: this.ctx.session },
+          );
+        } else {
+          // Separate strategy: nullify embed but keep reference
+          await targetCollection.updateMany(
+            { [`${relationName}._id`]: sourceIdString },
+            {
+              $set: {
+                [relationName]: null,
+              },
+            },
+            { session: this.ctx.session },
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Refresh embeds in documents (query-time, read-only)
+   * Re-fetches specified embed relations with fresh data from source
+   */
+  private async refreshEmbedsInDocuments(
+    docs: TDoc[],
+    relationNames: string[],
+  ): Promise<TDoc[]> {
+    if (docs.length === 0) return docs;
+
+    const relations = this.collectionDef._meta.relations || {};
+
+    for (const relationName of relationNames) {
+      const relation = relations[relationName];
+      if (!relation || relation.type !== 'embed') {
+        continue; // Skip non-embed relations
+      }
+
+      const embedRelation = relation as any;
+      const config = embedRelation.forward;
+      if (!config) continue;
+
+      // Re-process forward embeds for these documents
+      docs = await Promise.all(
+        docs.map(async (doc) => {
+          return (await this.relationHelper.processForwardEmbeds(
+            doc as any,
+            [relationName],
+          )) as TDoc;
+        }),
+      );
+    }
+
+    return docs;
+  }
+
+  /**
+   * Manual batch refresh of embeds (persists updates to database)
+   * Useful for maintenance, migrations, or fixing stale data
+   */
+  async refreshEmbeds(
+    relationName: string,
+    options: {
+      filter?: Filter<TDoc>;
+      batchSize?: number;
+      dryRun?: boolean;
+    } = {},
+  ): Promise<{ matched: number; updated: number; errors: number; skipped: number }> {
+    const { filter = {}, batchSize = 100, dryRun = false } = options;
+
+    const relations = this.collectionDef._meta.relations || {};
+    const relation = relations[relationName];
+
+    if (!relation || relation.type !== 'embed') {
+      throw new Error(`Relation '${relationName}' is not an EMBED relation`);
+    }
+
+    const embedRelation = relation as any;
+    const config = embedRelation.forward;
+    if (!config) {
+      throw new Error(`Relation '${relationName}' does not have forward embed config`);
+    }
+
+    const stats = {
+      matched: 0,
+      updated: 0,
+      errors: 0,
+      skipped: 0,
+    };
+
+    const finalFilter = this.applyPolicies(filter);
+
+    // Count total documents
+    stats.matched = await this.collection.countDocuments(finalFilter, {
+      session: this.ctx.session,
+    });
+
+    if (stats.matched === 0) {
+      return stats;
+    }
+
+    // Process in batches
+    let skip = 0;
+    while (skip < stats.matched) {
+      const batch = await this.collection
+        .find(finalFilter, { session: this.ctx.session })
+        .skip(skip)
+        .limit(batchSize)
+        .toArray();
+
+      for (const doc of batch) {
+        try {
+          // Re-process forward embed for this document
+          const refreshedDoc = await this.relationHelper.processForwardEmbeds(
+            doc as any,
+            [relationName],
+          );
+
+          // Update the document if not in dry-run mode
+          if (!dryRun) {
+            await this.collection.updateOne(
+              { _id: doc._id } as Filter<TDoc>,
+              { $set: { [relationName]: (refreshedDoc as any)[relationName] } } as any,
+              { session: this.ctx.session },
+            );
+          }
+
+          stats.updated++;
+        } catch (error) {
+          stats.errors++;
+          console.error(`Error refreshing embed for document ${doc._id}:`, error);
+        }
+      }
+
+      skip += batchSize;
+    }
+
+    return stats;
   }
 }

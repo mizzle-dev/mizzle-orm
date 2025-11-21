@@ -59,9 +59,81 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
   const db = client.db(config.dbName);
 
   // Build collection registry from the collections object
+  // Map both by object key (for db.users access) and by collection name (for internal lookups)
   const collectionRegistry = new Map<string, CollectionDefinition>();
-  for (const [_, collectionDef] of Object.entries(config.collections)) {
-    collectionRegistry.set(collectionDef._meta.name, collectionDef);
+  for (const [key, collectionDef] of Object.entries(config.collections)) {
+    // Register by object key (e.g., 'users' from { users: mongoCollection(...) })
+    collectionRegistry.set(key, collectionDef);
+    // Also register by collection name if different (e.g., 'user_table')
+    if (key !== collectionDef._meta.name) {
+      collectionRegistry.set(collectionDef._meta.name, collectionDef);
+    }
+  }
+
+  // Build reverse embed registry
+  // Maps: sourceCollectionName → Array<{ targetCollection, embedRelationName, config }>
+  const reverseEmbedRegistry = new Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any }>
+  >();
+
+  for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
+    const relations = targetCollectionDef._meta.relations || {};
+    for (const [relationName, relation] of Object.entries(relations)) {
+      if (relation.type === 'embed' && (relation as any).forward) {
+        const embedRelation = relation as any;
+        // Reverse config can be:
+        // 1. keepFresh: true at top level (shorthand for sync strategy)
+        // 2. reverse: { enabled, watchFields } at top level
+        // 3. forward.reverse: { enabled, watchFields } inside forward config (deprecated)
+        const reverseConfig = embedRelation.keepFresh
+          ? { enabled: true, strategy: 'sync' as const }
+          : embedRelation.reverse || embedRelation.forward.reverse;
+
+        if (reverseConfig?.enabled) {
+          const sourceCollectionName = embedRelation.sourceCollection;
+          if (!reverseEmbedRegistry.has(sourceCollectionName)) {
+            reverseEmbedRegistry.set(sourceCollectionName, []);
+          }
+          reverseEmbedRegistry.get(sourceCollectionName)!.push({
+            targetCollectionName: targetCollectionDef._meta.name,
+            relationName,
+            config: { ...embedRelation.forward, reverse: reverseConfig },
+          });
+        }
+      }
+    }
+  }
+
+  // Build delete cascade registry
+  // Maps: sourceCollectionName → Array<{ targetCollection, relationName, deleteAction }>
+  const deleteRegistry = new Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any; deleteAction: string }>
+  >();
+
+  for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
+    const relations = targetCollectionDef._meta.relations || {};
+    for (const [relationName, relation] of Object.entries(relations)) {
+      if (relation.type === 'embed' && (relation as any).forward) {
+        const embedRelation = relation as any;
+        const deleteAction = embedRelation.onSourceDelete || 'no-action';
+
+        // Only register if there's an action to take
+        if (deleteAction !== 'no-action') {
+          const sourceCollectionName = embedRelation.sourceCollection;
+          if (!deleteRegistry.has(sourceCollectionName)) {
+            deleteRegistry.set(sourceCollectionName, []);
+          }
+          deleteRegistry.get(sourceCollectionName)!.push({
+            targetCollectionName: targetCollectionDef._meta.name,
+            relationName,
+            config: embedRelation.forward,
+            deleteAction,
+          });
+        }
+      }
+    }
   }
 
   // Collections are already in the right format
@@ -108,7 +180,11 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
         }
 
         // Create and return a CollectionFacade for this collection
-        return new CollectionFacade(db, collectionDef, ctx);
+        return new CollectionFacade(db, collectionDef, ctx, {
+          reverseEmbedRegistry,
+          collectionRegistry,
+          deleteRegistry,
+        });
       },
     }) as DbFacade<TCollections>;
   }

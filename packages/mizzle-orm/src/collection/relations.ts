@@ -9,6 +9,7 @@ import type {
   LookupRelation,
   TypedRelation,
   RelationTargets,
+  EmbedConfig,
 } from '../types/collection';
 import { RelationType } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
@@ -71,26 +72,81 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
 }
 
 /**
- * Define an EMBED relation - denormalized data fetched separately
+ * Define an EMBED relation - write-time denormalization for read performance
+ *
+ * When documents are saved, referenced data is fetched and stored alongside
+ * the reference, eliminating the need for lookups on read.
  *
  * @example
  * ```typescript
- * const users = mongoCollection('users', {
- *   favoritePostIds: array(objectId()),
+ * // Simple embed
+ * const posts = mongoCollection('posts', {
+ *   authorId: string(),
  * }, {
  *   relations: {
- *     favoritePosts: embed(posts, {
- *       extractIds: (user) => user.favoritePostIds,
- *       applyEmbeds: (user, posts) => ({ ...user, favoritePosts: posts }),
+ *     author: embed(authors, {
+ *       forward: {
+ *         from: 'authorId',
+ *         fields: ['name', 'email', 'avatar'],
+ *       },
+ *       keepFresh: true, // Auto-update when author changes
+ *     })
+ *   }
+ * });
+ *
+ * // Array embed
+ * const posts = mongoCollection('posts', {
+ *   tagIds: array(string()),
+ * }, {
+ *   relations: {
+ *     tags: embed(tags, {
+ *       forward: {
+ *         from: 'tagIds',
+ *         fields: ['name', 'color'],
+ *       }
+ *     })
+ *   }
+ * });
+ *
+ * // In-place embed (merge into existing object)
+ * const workflows = mongoCollection('workflows', {
+ *   workflow: object({
+ *     refDirectory: object({
+ *       _id: string(),
+ *       name: string().optional(),
+ *     }),
+ *   }),
+ * }, {
+ *   relations: {
+ *     directory: embed(directories, {
+ *       forward: {
+ *         from: 'workflow.refDirectory._id', // ._id → inplace strategy
+ *         fields: ['name', 'type'],
+ *       }
  *     })
  *   }
  * });
  * ```
  */
-export function embed<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+
+/**
+ * Helper to check for excess properties in embed config
+ * Returns an error type if invalid keys are found
+ */
+type ValidateEmbedConfig<T> = T extends EmbedConfig
+  ? Exclude<keyof T, keyof EmbedConfig> extends never
+    ? T
+    : { error: 'Invalid property in embed config'; invalidKeys: Exclude<keyof T, keyof EmbedConfig> }
+  : { error: 'Config must be an EmbedConfig' };
+
+export function embed<
+  TOther extends SchemaDefinition,
+  TTargets extends RelationTargets,
+  const TConfig extends EmbedConfig, // const forces literal type preservation, extends provides autocomplete
+>(
   sourceCollection: CollectionDefinition<TOther, TTargets>,
-  config: Omit<EmbedRelation, 'type' | 'sourceCollection'>,
-): TypedRelation<EmbedRelation, CollectionDefinition<TOther, TTargets>> {
+  config: TConfig & ValidateEmbedConfig<TConfig>,
+): TypedRelation<EmbedRelation<any, any>, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.EMBED,
     sourceCollection: sourceCollection._meta.name,
