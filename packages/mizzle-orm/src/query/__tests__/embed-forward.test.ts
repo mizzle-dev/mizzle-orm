@@ -5,7 +5,7 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
-import { string, array, object, objectId } from '../../schema/fields';
+import { string, array, object, objectId, publicId } from '../../schema/fields';
 import { embed } from '../../collection/relations';
 
 afterAll(async () => {
@@ -183,6 +183,67 @@ describe('Forward Embeds - In-Place', () => {
 
     expect(workflow.directory.name).toBe('Legal');
     expect(workflow.directory.type).toBe('department');
+
+    await orm.close();
+  });
+});
+
+describe('Forward Embeds - Custom embedIdField', () => {
+  it('should embed using publicId instead of _id', async () => {
+    // Users with publicId
+    const users = mongoCollection('users', {
+      id: publicId('usr'), // Public ID field (auto-generated, e.g., "usr_abc123")
+      name: string(),
+      email: string(),
+    });
+
+    // Posts that reference by publicId and embed publicId
+    const postsWithPublicId = mongoCollection(
+      'postsWithPublicId',
+      {
+        _id: objectId().internalId(),
+        title: string(),
+        authorId: string(), // Store publicId as string (e.g., "usr_abc123")
+      },
+      {
+        relations: {
+          author: embed(users, {
+            forward: {
+              from: 'authorId',
+              fields: ['name', 'email'],
+              embedIdField: 'id', // Embed publicId instead of _id
+            },
+          }),
+        },
+      },
+    );
+
+    const orm = await createTestOrm({ users, postsWithPublicId });
+    const ctx = orm.createContext({});
+    const db = orm.withContext(ctx);
+
+    const user = await db.users.create({
+      name: 'Bob',
+      email: 'bob@example.com',
+    });
+
+    // user.id should be the generated publicId (string like "usr_abc123")
+    expect(user.id).toBeDefined();
+    expect(typeof user.id).toBe('string');
+
+    const post = await db.postsWithPublicId.create({
+      title: 'Public ID Test',
+      authorId: user.id, // Reference by publicId
+    });
+
+    expect(post.author).toBeDefined();
+    if (Array.isArray(post.author)) throw new Error('Expected single embed');
+
+    // The embedded _id should be the publicId (string), not ObjectId
+    expect(post.author?._id).toBe(user.id); // publicId, not ObjectId
+    expect(typeof post.author?._id).toBe('string');
+    expect(post.author?.name).toBe('Bob');
+    expect(post.author?.email).toBe('bob@example.com');
 
     await orm.close();
   });

@@ -241,18 +241,27 @@ export class RelationHelper<TDoc extends Document> {
     const ids = PathNavigator.extractIds(doc as Document, config);
     if (ids.length === 0) return doc;
 
-    // Fetch source documents
-    const objectIds = ids.map(id => {
-      try {
-        return new MongoObjectId(id);
-      } catch {
-        return id as any;
-      }
-    });
+    // Determine which field to use for lookup
+    const embedIdField = config.embedIdField || '_id';
+    const lookupField = embedIdField; // Field to search by in source collection
+
+    // Fetch source documents by the appropriate ID field
+    // If embedIdField is '_id', try to convert strings to ObjectIds
+    // Otherwise, keep as strings (e.g., for publicId fields)
+    const lookupValues =
+      lookupField === '_id'
+        ? ids.map((id) => {
+            try {
+              return new MongoObjectId(id);
+            } catch {
+              return id as any;
+            }
+          })
+        : ids; // Keep as strings for non-_id fields
 
     const sourceDocs = await this.db
       .collection(sourceCollectionName)
-      .find({ _id: { $in: objectIds } })
+      .find({ [lookupField]: { $in: lookupValues } })
       .toArray();
 
     if (sourceDocs.length === 0) {
@@ -264,12 +273,15 @@ export class RelationHelper<TDoc extends Document> {
     }
 
     // Build embed map (ID → embedded fields)
+    // Map by the field value that was extracted from the document
     const embedMap = new Map<string, Document>();
-    const embedIdField = config.embedIdField || '_id';
 
     for (const sourceDoc of sourceDocs) {
       const embedded = this.extractFields(sourceDoc, config.fields, embedIdField);
-      const sourceId = String(sourceDoc._id);
+      // Map by the lookup field value (converted to string)
+      const lookupValue = sourceDoc[lookupField];
+      const sourceId =
+        lookupValue instanceof MongoObjectId ? lookupValue.toHexString() : String(lookupValue);
       embedMap.set(sourceId, embedded);
     }
 
