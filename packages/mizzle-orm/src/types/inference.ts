@@ -65,14 +65,32 @@ type EmbeddedDocType<TTarget> = TTarget extends CollectionDefinition<any, any>
   : never;
 
 /**
+ * Extract only EMBED relation keys (not LOOKUP or REFERENCE)
+ */
+type EmbedRelationKeys<TRelationTargets> = {
+  [K in keyof TRelationTargets]: TRelationTargets[K] extends TypedRelation<
+    infer TRel,
+    any,
+    any
+  >
+    ? TRel extends { type: RelationType.EMBED }
+      ? K
+      : never
+    : never;
+}[keyof TRelationTargets];
+
+/**
  * Extract embedded fields from a collection's relations
  * For each EMBED relation, adds an optional field with the target document type
  * The embedded type includes _id: string plus any fields from the target
  * Now correctly infers single vs array based on source field type
+ *
+ * IMPORTANT: Only includes EMBED relations, not LOOKUP or REFERENCE.
+ * LOOKUP relations are added dynamically via WithIncluded when using include option.
  */
 type InferEmbeddedFields<T> = T extends CollectionDefinition<infer TSchema, infer TRelationTargets>
   ? {
-      [K in keyof TRelationTargets]?: TRelationTargets[K] extends TypedRelation<
+      [K in EmbedRelationKeys<TRelationTargets>]?: TRelationTargets[K] extends TypedRelation<
         infer TRel,
         infer TTarget,
         infer TConfig

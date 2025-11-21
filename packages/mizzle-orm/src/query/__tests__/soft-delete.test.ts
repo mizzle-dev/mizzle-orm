@@ -133,8 +133,6 @@ describe('Soft Delete', () => {
       await expect(db.noSoftDelete.softDelete(doc._id)).rejects.toThrow(
         'Soft delete not configured for this collection'
       );
-
-      await testOrm.close();
     });
   });
 });

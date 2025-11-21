@@ -59,9 +59,15 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
   const db = client.db(config.dbName);
 
   // Build collection registry from the collections object
+  // Map both by object key (for db.users access) and by collection name (for internal lookups)
   const collectionRegistry = new Map<string, CollectionDefinition>();
-  for (const [_, collectionDef] of Object.entries(config.collections)) {
-    collectionRegistry.set(collectionDef._meta.name, collectionDef);
+  for (const [key, collectionDef] of Object.entries(config.collections)) {
+    // Register by object key (e.g., 'users' from { users: mongoCollection(...) })
+    collectionRegistry.set(key, collectionDef);
+    // Also register by collection name if different (e.g., 'user_table')
+    if (key !== collectionDef._meta.name) {
+      collectionRegistry.set(collectionDef._meta.name, collectionDef);
+    }
   }
 
   // Build reverse embed registry
