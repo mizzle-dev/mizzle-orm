@@ -28,16 +28,32 @@ export class CollectionFacade<
   private collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>;
   private ctx: OrmContext;
   private relationHelper: RelationHelper<TDoc>;
+  private db: Db;
+  private reverseEmbedRegistry?: Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any }>
+  >;
+  private collectionRegistry?: Map<string, CollectionDefinition>;
 
   constructor(
     db: Db,
     collectionDef: CollectionDefinition<SchemaDefinition, TRelationTargets>,
     ctx: OrmContext,
+    options?: {
+      reverseEmbedRegistry?: Map<
+        string,
+        Array<{ targetCollectionName: string; relationName: string; config: any }>
+      >;
+      collectionRegistry?: Map<string, CollectionDefinition>;
+    },
   ) {
+    this.db = db;
     this.collection = db.collection<TDoc>(collectionDef._meta.name);
     this.collectionDef = collectionDef;
     this.ctx = ctx;
     this.relationHelper = new RelationHelper<TDoc>(db, collectionDef, ctx);
+    this.reverseEmbedRegistry = options?.reverseEmbedRegistry;
+    this.collectionRegistry = options?.collectionRegistry;
   }
 
   /**
@@ -270,6 +286,9 @@ export class CollectionFacade<
     if (this.collectionDef._meta.hooks.afterUpdate) {
       await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
     }
+
+    // Propagate reverse embeds if this collection is a source for any embeds
+    await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
 
     return result as TDoc;
   }
@@ -518,5 +537,128 @@ export class CollectionFacade<
       }
     }
     return null;
+  }
+
+  /**
+   * Propagate changes to documents that have embedded this source
+   */
+  private async propagateReverseEmbeds(
+    updatedDoc: TDoc,
+    updateData: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.reverseEmbedRegistry || !this.collectionRegistry) {
+      return;
+    }
+
+    const collectionName = this.collectionDef._meta.name;
+    const targets = this.reverseEmbedRegistry.get(collectionName);
+
+    if (!targets || targets.length === 0) {
+      return;
+    }
+
+    for (const target of targets) {
+      const { targetCollectionName, relationName, config } = target;
+
+      // Check if we should propagate (watchFields logic)
+      const shouldPropagate = this.shouldPropagateUpdate(config, updateData);
+      if (!shouldPropagate) {
+        continue;
+      }
+
+      // Build new embedded data
+      const embedIdField = config.embedIdField || '_id';
+      const newEmbedData = this.extractFieldsForEmbed(
+        updatedDoc as any,
+        config.fields,
+        embedIdField,
+      );
+
+      // Determine which field to search by (the ID that was embedded)
+      const sourceIdValue = (updatedDoc as any)[embedIdField];
+      const sourceIdString =
+        sourceIdValue instanceof ObjectId
+          ? sourceIdValue.toHexString()
+          : String(sourceIdValue);
+
+      // Update embedded field in target collection
+      const targetCollection = this.db.collection(targetCollectionName);
+
+      // Find all documents that have this source embedded
+      // The embedded _id field should match the source document's embedIdField
+      const filter = {
+        [`${relationName}._id`]: sourceIdString,
+      };
+
+      await targetCollection.updateMany(
+        filter,
+        { $set: { [relationName]: newEmbedData } },
+        { session: this.ctx.session },
+      );
+    }
+  }
+
+  /**
+   * Check if update should be propagated based on watchFields
+   */
+  private shouldPropagateUpdate(
+    config: any,
+    updateData: Record<string, unknown>,
+  ): boolean {
+    const reverseConfig = config.reverse;
+
+    // If no watchFields specified, always propagate
+    if (!reverseConfig?.watchFields || reverseConfig.watchFields.length === 0) {
+      return true;
+    }
+
+    // Check if any of the updated fields are in watchFields
+    const updatedFields = Object.keys(updateData);
+    const watchFields = reverseConfig.watchFields;
+
+    return updatedFields.some((field) => watchFields.includes(field));
+  }
+
+  /**
+   * Extract specified fields from document for embedding
+   * ALWAYS includes the ID field from embedIdField config
+   */
+  private extractFieldsForEmbed(
+    doc: Document,
+    fields: string[] | Record<string, 1 | 0>,
+    embedIdField: string = '_id',
+  ): Document {
+    if (Array.isArray(fields)) {
+      const result: Document = {};
+
+      // Always include the ID field first (convert to string)
+      if (embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof ObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const field of fields) {
+        if (field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
+    } else {
+      // Projection syntax
+      const result: Document = {};
+
+      // Always include the ID field unless explicitly excluded (convert to string)
+      if (fields._id !== 0 && embedIdField in doc) {
+        const idValue = doc[embedIdField];
+        result._id = idValue instanceof ObjectId ? idValue.toHexString() : String(idValue);
+      }
+
+      for (const [field, include] of Object.entries(fields)) {
+        if (include === 1 && field in doc && field !== embedIdField) {
+          result[field] = doc[field];
+        }
+      }
+      return result;
+    }
   }
 }

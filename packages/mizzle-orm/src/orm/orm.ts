@@ -64,6 +64,41 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
     collectionRegistry.set(collectionDef._meta.name, collectionDef);
   }
 
+  // Build reverse embed registry
+  // Maps: sourceCollectionName → Array<{ targetCollection, embedRelationName, config }>
+  const reverseEmbedRegistry = new Map<
+    string,
+    Array<{ targetCollectionName: string; relationName: string; config: any }>
+  >();
+
+  for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
+    const relations = targetCollectionDef._meta.relations || {};
+    for (const [relationName, relation] of Object.entries(relations)) {
+      if (relation.type === 'embed' && (relation as any).forward) {
+        const embedRelation = relation as any;
+        // Reverse config can be:
+        // 1. keepFresh: true at top level (shorthand for sync strategy)
+        // 2. reverse: { enabled, watchFields } at top level
+        // 3. forward.reverse: { enabled, watchFields } inside forward config (deprecated)
+        const reverseConfig = embedRelation.keepFresh
+          ? { enabled: true, strategy: 'sync' as const }
+          : embedRelation.reverse || embedRelation.forward.reverse;
+
+        if (reverseConfig?.enabled) {
+          const sourceCollectionName = embedRelation.sourceCollection;
+          if (!reverseEmbedRegistry.has(sourceCollectionName)) {
+            reverseEmbedRegistry.set(sourceCollectionName, []);
+          }
+          reverseEmbedRegistry.get(sourceCollectionName)!.push({
+            targetCollectionName: targetCollectionDef._meta.name,
+            relationName,
+            config: { ...embedRelation.forward, reverse: reverseConfig },
+          });
+        }
+      }
+    }
+  }
+
   // Collections are already in the right format
   const collections = config.collections;
 
@@ -108,7 +143,10 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
         }
 
         // Create and return a CollectionFacade for this collection
-        return new CollectionFacade(db, collectionDef, ctx);
+        return new CollectionFacade(db, collectionDef, ctx, {
+          reverseEmbedRegistry,
+          collectionRegistry,
+        });
       },
     }) as DbFacade<TCollections>;
   }
