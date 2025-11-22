@@ -33,11 +33,12 @@ import type { SchemaDefinition } from '../types/field';
  */
 export function reference<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
   targetCollection: CollectionDefinition<TOther, TTargets>,
-  config: Omit<ReferenceRelation, 'type' | 'targetCollection'>,
+  config: Omit<ReferenceRelation, 'type' | 'targetCollection' | '_targetCollectionDef'>,
 ): TypedRelation<ReferenceRelation, CollectionDefinition<TOther, TTargets>> {
   return {
     type: RelationType.REFERENCE,
     targetCollection: targetCollection._meta.name,
+    _targetCollectionDef: targetCollection, // Store full collection definition for runtime
     ...config,
   } as any;
 }
@@ -62,11 +63,12 @@ export function reference<TOther extends SchemaDefinition, TTargets extends Rela
  */
 export function lookup<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
   targetCollection: CollectionDefinition<TOther, TTargets>,
-  config: Omit<LookupRelation, 'type' | 'targetCollection'>,
+  config: Omit<LookupRelation, 'type' | 'targetCollection' | '_targetCollectionDef'>,
 ): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>> {
   return {
     type: RelationType.LOOKUP,
     targetCollection: targetCollection._meta.name,
+    _targetCollectionDef: targetCollection, // Store full collection definition for runtime
     ...config,
   } as any;
 }
@@ -150,6 +152,7 @@ export function embed<
   return {
     type: RelationType.EMBED,
     sourceCollection: sourceCollection._meta.name,
+    _sourceCollectionDef: sourceCollection, // Store full collection definition for runtime
     ...config,
   } as any;
 }

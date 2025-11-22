@@ -72,6 +72,9 @@ export interface ReferenceRelation {
     field: string; // Field name where embedded data is stored
     fields: string[]; // Fields to embed from target
   };
+
+  // Runtime reference to the target collection definition (for nested includes)
+  _targetCollectionDef?: CollectionDefinition<any, any>;
 }
 
 /**
@@ -84,6 +87,12 @@ export interface ReverseEmbedConfig {
   batchSize?: number; // Default: 100
   maxUpdates?: number; // Default: 10000
 }
+
+/**
+ * Field selection type
+ * Supports both array syntax and MongoDB projection syntax
+ */
+export type FieldSelection = string[] | Record<string, 1 | 0>;
 
 /**
  * Forward embed configuration
@@ -108,7 +117,7 @@ export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extend
   // - ['workflow.required[].ref._id', 'workflow.optional[].ref._id']
 
   // ==== Fields to Embed (Required) ====
-  fields: string[] | Record<string, 1 | 0>;
+  fields: FieldSelection;
 
   // ==== ID Field Configuration ====
   embedIdField?: string; // Default: '_id'
@@ -157,6 +166,15 @@ export interface EmbedRelation<TFrom extends string = string, TPaths extends rea
   strategy?: 'denormalized';
   extractIds?: (doc: Document) => string[];
   applyEmbeds?: (doc: Document, embeds: Document[]) => Document;
+
+  // Default query options (can be overridden at query time)
+  select?: FieldSelection; // Default fields to include
+  where?: any; // Default filter (ANDed with query-time filter)
+  sort?: Record<string, 1 | -1>; // Default sort order
+  limit?: number; // Default limit
+
+  // Runtime reference to the source collection definition (for nested includes)
+  _sourceCollectionDef?: CollectionDefinition<any, any>;
 }
 
 /**
@@ -170,6 +188,15 @@ export interface LookupRelation {
   as?: string; // Optional - defaults to relation name
   one?: boolean; // If true, populate single document; otherwise array
   pipeline?: Document[];
+
+  // Default query options (can be overridden at query time)
+  select?: FieldSelection; // Default fields to include
+  where?: any; // Default filter (ANDed with query-time filter)
+  sort?: Record<string, 1 | -1>; // Default sort order
+  limit?: number; // Default limit
+
+  // Runtime reference to the target collection definition (for nested includes)
+  _targetCollectionDef?: CollectionDefinition<any, any>;
 }
 
 /**
@@ -334,12 +361,15 @@ export interface CollectionOptions<
 /**
  * Collection metadata (internal representation)
  */
-export interface CollectionMeta<TSchema extends SchemaDefinition = SchemaDefinition> {
+export interface CollectionMeta<
+  TSchema extends SchemaDefinition = SchemaDefinition,
+  TRelationTargets extends RelationTargets = {},
+> {
   name: string;
   schema: TSchema;
   indexes: IndexDef[];
   searchIndexes: any[];
-  relations: Relations;
+  relations: TRelationTargets;
   policies: PolicyConfig<TSchema>;
   audit: CollectionAuditConfig;
   hooks: Hooks<TSchema>;
@@ -347,8 +377,9 @@ export interface CollectionMeta<TSchema extends SchemaDefinition = SchemaDefinit
 
 /**
  * Relation targets map - maps relation name to TypedRelation
+ * Using 'any' here to avoid narrowing specific types when used as a constraint
  */
-export type RelationTargets = Record<string, TypedRelation<any, any, any>>;
+export type RelationTargets = Record<string, any>;
 
 /**
  * Collection definition (what mongoCollection returns)
@@ -361,7 +392,7 @@ export interface CollectionDefinition<
   TRelationTargets extends RelationTargets = {},
 > {
   readonly _schema: TSchema;
-  readonly _meta: CollectionMeta<TSchema>;
+  readonly _meta: CollectionMeta<TSchema, TRelationTargets>;
   readonly _relationTargets: TRelationTargets; // Phantom type for relation target tracking
   readonly _brand: 'CollectionDefinition';
 

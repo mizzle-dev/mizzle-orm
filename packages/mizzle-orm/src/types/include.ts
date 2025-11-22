@@ -7,12 +7,23 @@ import type { InferDocument } from './inference';
 
 /**
  * Extract the target CollectionDefinition from a TypedRelation
+ * Preserves the full type including schema
  */
 type ExtractTarget<TRelation> = TRelation extends { _targetCollection?: infer T }
-  ? T extends CollectionDefinition<any, any>
-    ? T
-    : never
+  ? T
   : never;
+
+/**
+ * Apply field selection to a document type
+ * Supports array syntax: ['name', 'email']
+ * For now, projection syntax ({ name: 1, email: 1 }) returns the full document
+ * (More sophisticated projection type inference can be added later)
+ */
+type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Array<infer K>
+  ? K extends keyof TDoc
+    ? Pick<TDoc, K>
+    : TDoc
+  : TDoc; // Projection syntax: return full doc for now
 
 /**
  * Configuration for nested includes on a related collection
@@ -21,6 +32,7 @@ type ExtractTarget<TRelation> = TRelation extends { _targetCollection?: infer T 
 export type NestedIncludeConfig<TTargetOrRelation> =
   ExtractTarget<TTargetOrRelation> extends CollectionDefinition<any, infer TNestedRelations>
     ? {
+        select?: string[] | Record<string, any>; // More permissive - array or any object with field specs
         include?: IncludeConfig<TNestedRelations>;
         where?: Record<string, any>;
         sort?: Record<string, 1 | -1>;
@@ -28,6 +40,7 @@ export type NestedIncludeConfig<TTargetOrRelation> =
       }
     : TTargetOrRelation extends CollectionDefinition<any, infer TNestedRelations>
       ? {
+          select?: string[] | Record<string, any>; // More permissive
           include?: IncludeConfig<TNestedRelations>;
           where?: Record<string, any>;
           sort?: Record<string, 1 | -1>;
@@ -52,28 +65,33 @@ export type IncludeConfig<TRelationTargets extends RelationTargets> =
 
 /**
  * Add a single populated relation field to a document type
+ * Handles both field selection and nested includes
  */
 type AddPopulatedField<
   TDoc,
   TRelationName extends string,
   TRelation,
   TConfig,
-> = ExtractTarget<TRelation> extends CollectionDefinition<any, any>
-  ? TConfig extends NestedIncludeConfig<ExtractTarget<TRelation>>
-    ? ExtractTarget<TRelation> extends CollectionDefinition<any, infer TNestedRelations>
-      ? TDoc & {
-          [K in TRelationName]: TConfig['include'] extends IncludeConfig<TNestedRelations>
-            ? WithIncluded<InferDocument<ExtractTarget<TRelation>>, TConfig['include'], TNestedRelations>
-            : InferDocument<ExtractTarget<TRelation>>;
-        }
-      : TDoc & {
-          [K in TRelationName]: InferDocument<ExtractTarget<TRelation>>;
-        }
-    : TDoc & {
-        [K in TRelationName]: InferDocument<ExtractTarget<TRelation>> | null;
-      }
+> = ExtractTarget<TRelation> extends CollectionDefinition<infer TSchema, infer TNestedRelations>
+  ? TDoc & {
+      [K in TRelationName]: (
+        TConfig extends true
+          ? InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+          : TConfig extends { include: any; select: any }
+            ? WithIncluded<
+                ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['select']>,
+                TConfig['include'],
+                TNestedRelations
+              >
+            : TConfig extends { include: any }
+              ? WithIncluded<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['include'], TNestedRelations>
+              : TConfig extends { select: any }
+                ? ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['select']>
+                : InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+      );
+    }
   : TDoc & {
-      [K in TRelationName]: any; // Fallback if target can't be extracted
+      [K in TRelationName]: any;
     };
 
 /**
@@ -91,23 +109,14 @@ export type WithIncluded<
     : TDoc
   : TInclude extends object
     ? // Object: { authorData: true, comments: true }
-      {
-        [K in keyof TInclude]: K extends keyof TRelationTargets
-          ? TInclude[K] extends true | NestedIncludeConfig<TRelationTargets[K]>
-            ? true
-            : never
-          : never;
-      } extends Record<keyof TInclude, true>
-      ? // All keys are valid relations
-        UnionToIntersection<
-          {
-            [K in keyof TInclude]: K extends keyof TRelationTargets
-              ? AddPopulatedField<{}, K & string, TRelationTargets[K], TInclude[K]>
-              : {};
-          }[keyof TInclude]
-        > &
-          TDoc
-      : TDoc
+      UnionToIntersection<
+        {
+          [K in keyof TInclude]: K extends keyof TRelationTargets
+            ? AddPopulatedField<{}, K & string, TRelationTargets[K], TInclude[K]>
+            : {};
+        }[keyof TInclude]
+      > &
+        TDoc
     : TDoc;
 
 /**

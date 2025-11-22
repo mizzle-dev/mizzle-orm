@@ -6,7 +6,6 @@ import { MongoClient, Db } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { createMongoOrm } from '../orm/orm';
 import type { MongoOrm } from '../types/orm';
-import type { CollectionDefinition } from '../types/collection';
 
 let mongoServer: MongoMemoryServer | null = null;
 let mongoClient: MongoClient | null = null;
@@ -80,9 +79,7 @@ export async function clearTestDb(): Promise<void> {
  * Create a test ORM instance with given collections
  * Pass a record of collections directly for best type inference
  */
-export async function createTestOrm<
-  TCollections extends Record<string, CollectionDefinition<any, any>>
->(
+export async function createTestOrm<TCollections extends Record<string, any>>(
   collections: TCollections,
 ): Promise<MongoOrm<TCollections>> {
   const { uri } = await setupTestDb();

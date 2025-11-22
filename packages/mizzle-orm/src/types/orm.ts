@@ -3,9 +3,9 @@
  */
 
 import type { MongoClient, ClientSession, ObjectId } from 'mongodb';
-import type { CollectionDefinition, RelationTargets } from './collection';
+import type { RelationTargets, CollectionDefinition } from './collection';
 import type { IncludeConfig, WithIncluded } from './include';
-import type { Filter } from './inference';
+import type { Filter, InferDocument, InferInsert, InferUpdate } from './inference';
 
 /**
  * User context for RLS and audit
@@ -88,8 +88,8 @@ export interface DevGuardrailsConfig {
 /**
  * ORM configuration
  */
-export interface OrmConfig<TCollections extends Record<string, CollectionDefinition<any>> = Record<string, CollectionDefinition<any>>> {
-  uri: string;
+export interface OrmConfig<TCollections = Record<string, CollectionDefinition>> {
+  uri?: string; // Optional if client is provided
   dbName: string;
   collections: TCollections;
 
@@ -98,7 +98,10 @@ export interface OrmConfig<TCollections extends Record<string, CollectionDefinit
   audit?: AuditOrmConfig;
   devGuardrails?: DevGuardrailsConfig;
 
-  // MongoDB client options
+  // MongoDB client (provide for connection pooling)
+  client?: MongoClient;
+
+  // MongoDB client options (only used if client is not provided)
   clientOptions?: Parameters<typeof MongoClient.connect>[1];
 }
 
@@ -185,12 +188,12 @@ export interface CollectionFacade<TDoc = any, TInsert = any, TUpdate = any, TRel
 /**
  * Database facade with dynamic collection accessors
  */
-export type DbFacade<TCollections extends Record<string, CollectionDefinition<any, any>>> = {
-  [K in keyof TCollections]: TCollections[K] extends CollectionDefinition<any, infer TRelationTargets>
+export type DbFacade<TCollections> = {
+  [K in keyof TCollections]: TCollections[K] extends CollectionDefinition<infer TSchema, infer TRelationTargets extends RelationTargets>
     ? CollectionFacade<
-        TCollections[K]['$inferDocument'],
-        TCollections[K]['$inferInsert'],
-        TCollections[K]['$inferUpdate'],
+        InferDocument<CollectionDefinition<TSchema, TRelationTargets>>,
+        InferInsert<CollectionDefinition<TSchema, TRelationTargets>>,
+        InferUpdate<CollectionDefinition<TSchema, TRelationTargets>>,
         TRelationTargets
       >
     : never;
@@ -207,7 +210,7 @@ export interface TransactionHelper {
  * ORM transaction instance
  */
 export interface MongoOrmTransaction {
-  withContext<TCollections extends Record<string, CollectionDefinition>>(
+  withContext<TCollections extends Record<string, any>>(
     ctx: OrmContext,
   ): DbFacade<TCollections>;
 }
@@ -215,7 +218,7 @@ export interface MongoOrmTransaction {
 /**
  * Main ORM instance
  */
-export interface MongoOrm<TCollections extends Record<string, CollectionDefinition> = any> {
+export interface MongoOrm<TCollections extends Record<string, any> = any> {
   // Context management
   createContext(partial: Partial<OrmContext>): OrmContext;
   withContext(ctx: OrmContext): DbFacade<TCollections>;
@@ -230,3 +233,18 @@ export interface MongoOrm<TCollections extends Record<string, CollectionDefiniti
   // Metadata
   collections: TCollections;
 }
+
+/**
+ * Type helper to infer the ORM type from a collections object
+ *
+ * @example
+ * ```typescript
+ * const collections = defineCollections({ users, posts, comments });
+ * let orm!: InferOrm<typeof collections>;
+ *
+ * beforeAll(async () => {
+ *   orm = await createMongoOrm({ uri, dbName, collections });
+ * });
+ * ```
+ */
+export type InferOrm<TCollections extends Record<string, any>> = MongoOrm<TCollections>;

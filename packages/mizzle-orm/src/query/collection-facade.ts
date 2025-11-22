@@ -34,7 +34,6 @@ export class CollectionFacade<
     string,
     Array<{ targetCollectionName: string; relationName: string; config: any }>
   >;
-  private collectionRegistry?: Map<string, CollectionDefinition>;
   private deleteRegistry?: Map<
     string,
     Array<{ targetCollectionName: string; relationName: string; config: any; deleteAction: string }>
@@ -49,7 +48,6 @@ export class CollectionFacade<
         string,
         Array<{ targetCollectionName: string; relationName: string; config: any }>
       >;
-      collectionRegistry?: Map<string, CollectionDefinition>;
       deleteRegistry?: Map<
         string,
         Array<{
@@ -67,7 +65,6 @@ export class CollectionFacade<
     this.ctx = ctx;
     this.relationHelper = new RelationHelper<TDoc>(db, collectionDef, ctx);
     this.reverseEmbedRegistry = options?.reverseEmbedRegistry;
-    this.collectionRegistry = options?.collectionRegistry;
     this.deleteRegistry = options?.deleteRegistry;
   }
 
@@ -573,7 +570,7 @@ export class CollectionFacade<
     updatedDoc: TDoc,
     updateData: Record<string, unknown>,
   ): Promise<void> {
-    if (!this.reverseEmbedRegistry || !this.collectionRegistry) {
+    if (!this.reverseEmbedRegistry) {
       return;
     }
 
