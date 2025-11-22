@@ -78,7 +78,7 @@ function fieldConfigToZod(fieldConfig: FieldConfig<any>): z.ZodTypeAny {
 
     case FieldType.RECORD:
       // Record/map type
-      schema = z.record(z.any());
+      schema = z.record(z.string(), z.any());
       break;
 
     case FieldType.JSON:

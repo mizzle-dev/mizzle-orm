@@ -7,7 +7,6 @@ import type {
   CollectionMeta,
   CollectionOptions,
   IndexDef,
-  Relations,
   PolicyConfig,
   Hooks,
   CollectionAuditConfig,
@@ -74,11 +73,8 @@ export function mongoCollection<
     }
   }
 
-  // Build relations
-  let relations: Relations = {};
-  if (options.relations) {
-    relations = options.relations as any as Relations;
-  }
+  // Build relations - preserve the typed relation information
+  const relations = (options.relations || {}) as ExtractRelationTargets<TRels>;
 
   // Policies (plain object)
   const policies: PolicyConfig<TSchema> = options.policies || {};
@@ -94,8 +90,8 @@ export function mongoCollection<
   // Search indexes (placeholder for now)
   const searchIndexes: any[] = [];
 
-  // Create metadata
-  const meta: CollectionMeta<TSchema> = {
+  // Create metadata with typed relations
+  const meta: CollectionMeta<TSchema, ExtractRelationTargets<TRels>> = {
     name,
     schema,
     indexes,

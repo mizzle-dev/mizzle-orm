@@ -4,7 +4,7 @@
 
 import { MongoClient } from 'mongodb';
 import type { OrmConfig, OrmContext, MongoOrm, DbFacade, TransactionHelper } from '../types/orm';
-import type { CollectionDefinition } from '../types/collection';
+import type { AnyRelation } from '../types/collection';
 import { ObjectId } from 'mongodb';
 import { nanoid } from 'nanoid';
 import { CollectionFacade } from '../query/collection-facade';
@@ -23,7 +23,7 @@ import { CollectionFacade } from '../query/collection-facade';
  * });
  * ```
  */
-export function defineCollections<T extends Record<string, CollectionDefinition<any>>>(
+export function defineCollections<T>(
   collections: T,
 ): T {
   return collections;
@@ -48,19 +48,31 @@ export function defineCollections<T extends Record<string, CollectionDefinition<
  * const user = await db.users.findOne({ email: 'alice@example.com' });
  * ```
  */
-export async function createMongoOrm<TCollections extends Record<string, CollectionDefinition<any>>>(
+export async function createMongoOrm<TCollections extends Record<string, any>>(
   config: OrmConfig<TCollections>,
 ): Promise<MongoOrm<TCollections>> {
-  // Connect to MongoDB
-  const client = new MongoClient(config.uri, config.clientOptions);
-  await client.connect();
+  // Use provided client or create new one
+  let client: MongoClient;
+  let clientOwned = false; // Track if we created the client
+
+  if (config.client) {
+    // Use provided client (for connection pooling)
+    client = config.client;
+  } else {
+    // Create new client
+    if (!config.uri) {
+      throw new Error('Either "client" or "uri" must be provided in ORM config');
+    }
+    client = new MongoClient(config.uri, config.clientOptions);
+    await client.connect();
+    clientOwned = true;
+  }
 
   // Get database instance
   const db = client.db(config.dbName);
 
-  // Build collection registry from the collections object
-  // Map both by object key (for db.users access) and by collection name (for internal lookups)
-  const collectionRegistry = new Map<string, CollectionDefinition>();
+  // Build collection registry from the collections object for internal lookups
+  const collectionRegistry = new Map<string, any>();
   for (const [key, collectionDef] of Object.entries(config.collections)) {
     // Register by object key (e.g., 'users' from { users: mongoCollection(...) })
     collectionRegistry.set(key, collectionDef);
@@ -80,8 +92,9 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
   for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
     const relations = targetCollectionDef._meta.relations || {};
     for (const [relationName, relation] of Object.entries(relations)) {
-      if (relation.type === 'embed' && (relation as any).forward) {
-        const embedRelation = relation as any;
+      const typedRelation = relation as AnyRelation;
+      if (typedRelation.type === 'embed' && (typedRelation as any).forward) {
+        const embedRelation = typedRelation as any;
         // Reverse config can be:
         // 1. keepFresh: true at top level (shorthand for sync strategy)
         // 2. reverse: { enabled, watchFields } at top level
@@ -115,8 +128,9 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
   for (const [_, targetCollectionDef] of Object.entries(config.collections)) {
     const relations = targetCollectionDef._meta.relations || {};
     for (const [relationName, relation] of Object.entries(relations)) {
-      if (relation.type === 'embed' && (relation as any).forward) {
-        const embedRelation = relation as any;
+      const typedRelation = relation as AnyRelation;
+      if (typedRelation.type === 'embed' && (typedRelation as any).forward) {
+        const embedRelation = typedRelation as any;
         const deleteAction = embedRelation.onSourceDelete || 'no-action';
 
         // Only register if there's an action to take
@@ -174,7 +188,8 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
     // Create a proxy that dynamically creates collection facades
     return new Proxy({} as any, {
       get(_target, collectionName: string) {
-        const collectionDef = collectionRegistry.get(collectionName);
+        // Access collection directly from config to preserve exact types
+        const collectionDef = config.collections[collectionName];
         if (!collectionDef) {
           throw new Error(`Collection '${collectionName}' not found in ORM`);
         }
@@ -182,7 +197,6 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
         // Create and return a CollectionFacade for this collection
         return new CollectionFacade(db, collectionDef, ctx, {
           reverseEmbedRegistry,
-          collectionRegistry,
           deleteRegistry,
         });
       },
@@ -216,9 +230,12 @@ export async function createMongoOrm<TCollections extends Record<string, Collect
 
   /**
    * Close the ORM connection
+   * Only closes the client if it was created by this ORM instance
    */
   async function close(): Promise<void> {
-    await client.close();
+    if (clientOwned) {
+      await client.close();
+    }
   }
 
   return {

@@ -3,7 +3,7 @@
  */
 
 import type { Document } from 'mongodb';
-import type { CollectionDefinition, RelationTargets, AnyRelation, LookupRelation } from '../types/collection';
+import type { CollectionDefinition, RelationTargets, AnyRelation, LookupRelation, FieldSelection } from '../types/collection';
 import type { IncludeConfig, NestedIncludeConfig } from '../types/include';
 
 /**
@@ -12,6 +12,9 @@ import type { IncludeConfig, NestedIncludeConfig } from '../types/include';
 export class RelationPipelineBuilder {
   /**
    * Build aggregation pipeline stages for include config
+   *
+   * @param collectionDef - Collection definition
+   * @param include - Include configuration
    */
   static buildPipeline<TRelationTargets extends RelationTargets>(
     collectionDef: CollectionDefinition<any, TRelationTargets>,
@@ -49,7 +52,7 @@ export class RelationPipelineBuilder {
   private static buildLookupStages(
     relationName: string,
     relation: AnyRelation,
-    nestedConfig?: NestedIncludeConfig<any>,
+    queryConfig?: NestedIncludeConfig<any>,
   ): Document[] {
     const stages: Document[] = [];
 
@@ -59,27 +62,43 @@ export class RelationPipelineBuilder {
       // Build the lookup pipeline
       const pipeline: Document[] = [];
 
-      // Add nested includes if present
-      if (nestedConfig?.include) {
-        // We need to get the target collection definition to build nested lookups
-        // For now, we'll just add a TODO marker
-        // This will be resolved in Phase 4 when we have access to all collection definitions
-        // pipeline.push(...this.buildNestedLookups(nestedConfig.include));
+      // STEP 1: Merge where clauses (default AND query-time)
+      const whereClause = this.mergeWhereClause(
+        lookupRelation.where, // Default from relation
+        queryConfig?.where,    // Query-time override
+      );
+
+      if (whereClause) {
+        pipeline.push({ $match: whereClause });
       }
 
-      // Add where filter if present
-      if (nestedConfig?.where) {
-        pipeline.push({ $match: nestedConfig.where });
+      // STEP 2: Sort (query-time replaces default)
+      const sortClause = queryConfig?.sort ?? lookupRelation.sort;
+      if (sortClause) {
+        pipeline.push({ $sort: sortClause });
       }
 
-      // Add sort if present
-      if (nestedConfig?.sort) {
-        pipeline.push({ $sort: nestedConfig.sort });
+      // STEP 3: Limit (query-time replaces default)
+      const limitValue = queryConfig?.limit ?? lookupRelation.limit;
+      if (limitValue) {
+        pipeline.push({ $limit: limitValue });
       }
 
-      // Add limit if present
-      if (nestedConfig?.limit) {
-        pipeline.push({ $limit: nestedConfig.limit });
+      // STEP 4: Field selection (query-time replaces default)
+      const selectFields = queryConfig?.select ?? lookupRelation.select;
+      if (selectFields) {
+        const projection = this.buildProjection(selectFields);
+        pipeline.push({ $project: projection });
+      }
+
+      // STEP 5: Nested includes (recursively build pipeline)
+      if (queryConfig?.include && lookupRelation._targetCollectionDef) {
+        const targetCollection = lookupRelation._targetCollectionDef;
+        const nestedStages = this.buildPipeline(
+          targetCollection,
+          queryConfig.include,
+        );
+        pipeline.push(...nestedStages);
       }
 
       // Build the $lookup stage
@@ -137,15 +156,52 @@ export class RelationPipelineBuilder {
     return stages;
   }
 
+
   /**
-   * Build nested lookup stages recursively
-   * This requires access to all collection definitions
+   * Build MongoDB projection from FieldSelection
+   * Handles both array syntax and MongoDB projection syntax
    */
-  static buildNestedPipeline<TRelationTargets extends RelationTargets>(
-    targetCollectionDef: CollectionDefinition<any, TRelationTargets>,
-    nestedInclude: IncludeConfig<TRelationTargets>,
-  ): Document[] {
-    // Recursively build pipeline for nested includes
-    return this.buildPipeline(targetCollectionDef, nestedInclude);
+  private static buildProjection(select: FieldSelection): Record<string, 1 | 0> {
+    if (Array.isArray(select)) {
+      // Array syntax: ['name', 'email', 'profile.avatar']
+      const projection: Record<string, 1> = { _id: 1 }; // Always include _id
+      for (const field of select) {
+        projection[field] = 1;
+      }
+      return projection;
+    } else {
+      // MongoDB projection syntax: { name: 1, email: 1, password: 0 }
+      const projection: Record<string, 1 | 0> = {};
+
+      // Always include _id unless explicitly excluded
+      if (select._id !== 0) {
+        projection._id = 1;
+      }
+
+      // Copy all field specifications
+      for (const [field, include] of Object.entries(select)) {
+        projection[field] = include;
+      }
+
+      return projection;
+    }
+  }
+
+  /**
+   * Merge where clauses (AND together)
+   * Default where clause is ANDed with query-time where clause
+   */
+  private static mergeWhereClause(
+    defaultWhere: any,
+    queryWhere: any,
+  ): any | undefined {
+    if (!defaultWhere && !queryWhere) return undefined;
+    if (!defaultWhere) return queryWhere;
+    if (!queryWhere) return defaultWhere;
+
+    // Both exist - AND them together
+    return {
+      $and: [defaultWhere, queryWhere],
+    };
   }
 }

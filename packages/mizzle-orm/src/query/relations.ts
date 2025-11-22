@@ -10,6 +10,7 @@ import type {
   LookupRelation,
   CollectionDefinition,
   ForwardEmbedConfig,
+  AnyRelation,
 } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
 import { PathNavigator } from '../utils/path-navigator';
@@ -166,7 +167,8 @@ export class RelationHelper<TDoc extends Document> {
     let result = docs;
 
     for (const name of relationNames) {
-      const relation = this.collectionDef._meta.relations?.[name];
+      const relations = this.collectionDef._meta.relations as Record<string, AnyRelation> | undefined;
+      const relation = relations?.[name];
       if (!relation) {
         throw new Error(`Relation '${name}' not found on collection`);
       }
@@ -189,13 +191,14 @@ export class RelationHelper<TDoc extends Document> {
     const relations = this.collectionDef._meta.relations || {};
 
     for (const [_name, relation] of Object.entries(relations)) {
-      if (relation.type === 'reference') {
-        const value = (doc as any)[relation.localField];
+      const typedRelation = relation as AnyRelation;
+      if (typedRelation.type === 'reference') {
+        const value = (doc as any)[typedRelation.localField];
         if (value !== undefined) {
-          const isValid = await validateReference(this.db, relation, value);
+          const isValid = await validateReference(this.db, typedRelation, value);
           if (!isValid) {
             throw new Error(
-              `Invalid reference: ${relation.localField} references non-existent document in ${relation.targetCollection}`
+              `Invalid reference: ${typedRelation.localField} references non-existent document in ${typedRelation.targetCollection}`
             );
           }
         }
@@ -210,22 +213,23 @@ export class RelationHelper<TDoc extends Document> {
    * @param onlyRelations - Optional array of relation names to process (processes all if not specified)
    */
   async processForwardEmbeds(doc: Partial<TDoc>, onlyRelations?: string[]): Promise<Partial<TDoc>> {
-    const relations = this.collectionDef._meta.relations || {};
+    const relations = (this.collectionDef._meta.relations || {}) as Record<string, AnyRelation>;
     let result = { ...doc };
 
     for (const [relationName, relation] of Object.entries(relations)) {
-      if (relation.type !== 'embed') continue;
+      const typedRelation = relation as AnyRelation;
+      if (typedRelation.type !== 'embed') continue;
 
       // Skip if onlyRelations is specified and this relation is not in the list
       if (onlyRelations && !onlyRelations.includes(relationName)) continue;
 
       // New forward embed config
-      if (relation.forward) {
+      if (typedRelation.forward) {
         result = await this.processForwardEmbed(
           result,
           relationName,
-          relation.forward,
-          relation.sourceCollection,
+          typedRelation.forward,
+          typedRelation.sourceCollection,
         );
       }
     }
