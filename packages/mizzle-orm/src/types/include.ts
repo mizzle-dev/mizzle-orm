@@ -10,7 +10,7 @@
  * - Using type assertions for extreme edge cases
  */
 
-import type { CollectionDefinition, RelationTargets } from './collection';
+import type { CollectionDefinition, RelationTargets, TypedRelation, RelationType } from './collection';
 import type { InferDocument } from './inference';
 
 /**
@@ -69,6 +69,18 @@ type ExtractDefaultProjection<TRel> = TRel extends { _relConfig?: infer TConfig 
     : never;
 
 /**
+ * Extract only LOOKUP and REFERENCE relation keys (excludes EMBED relations)
+ * Embed relations are already in the document and should not be included via $lookup
+ */
+type IncludableRelationKeys<TRelationTargets extends RelationTargets> = {
+  [K in keyof TRelationTargets]: TRelationTargets[K] extends TypedRelation<infer TRel, any, any>
+    ? TRel extends { type: RelationType.EMBED }
+      ? never  // Exclude EMBED relations
+      : K      // Include LOOKUP and REFERENCE relations
+    : K;       // Include if not a TypedRelation (shouldn't happen)
+}[keyof TRelationTargets];
+
+/**
  * Configuration for nested includes on a related collection
  * Can accept either a CollectionDefinition directly or extract from TypedRelation
  */
@@ -97,11 +109,14 @@ export type NestedIncludeConfig<TTargetOrRelation> =
  * - String: 'authorData' (single relation)
  * - Object: { authorData: true, comments: true }
  * - Nested: { authorData: { include: { organizationData: true } } }
+ *
+ * IMPORTANT: Only LOOKUP and REFERENCE relations can be included.
+ * EMBED relations are already in the document and should use refreshEmbeds instead.
  */
 export type IncludeConfig<TRelationTargets extends RelationTargets> =
-  | (keyof TRelationTargets & string)
+  | (IncludableRelationKeys<TRelationTargets> & string)
   | {
-      [K in keyof TRelationTargets]?:
+      [K in IncludableRelationKeys<TRelationTargets>]?:
         | true
         | NestedIncludeConfig<TRelationTargets[K]>;
     };
