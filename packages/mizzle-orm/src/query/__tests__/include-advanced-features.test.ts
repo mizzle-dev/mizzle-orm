@@ -360,7 +360,6 @@ describe('Advanced Include Features', () => {
             select: {
               name: 1,
               email: 1,
-              password: 0, // Explicitly exclude
             },
           },
         },
@@ -479,7 +478,7 @@ describe('Advanced Include Features', () => {
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: ['name', 'email', 'role', 'organizationId'],
+            select: ['name', 'email', 'role', 'active', 'organizationId'],
             where: { active: true },
             sort: { name: 1 },
             include: {
