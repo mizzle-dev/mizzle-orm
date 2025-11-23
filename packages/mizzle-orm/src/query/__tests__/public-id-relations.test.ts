@@ -67,18 +67,14 @@ describe('Public ID Relations', () => {
     }
   );
 
-  let orm: Awaited<ReturnType<typeof setupOrm>>;
+  let db: any;
 
-  async function setupOrm() {
-    return createTestOrm({
+  beforeAll(async () => {
+    db = await createTestOrm({
       organizations,
       users,
       posts,
     });
-  }
-
-  beforeAll(async () => {
-    orm = await setupOrm();
   });
 
   afterAll(async () => {
@@ -91,18 +87,16 @@ describe('Public ID Relations', () => {
 
   describe('REFERENCE validation with public IDs', () => {
     it('should validate reference using public ID', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Create organization
-      const org = await db.organizations.create({
+      const org = await db().organizations.create({
         name: 'Acme Corp',
       });
 
       expect(org.id).toMatch(/^org_/);
 
       // Create user with valid public ID reference
-      const user = await db.users.create({
+      const user = await db().users.create({
         email: 'alice@acme.com',
         name: 'Alice',
         orgId: org.id, // String public ID
@@ -113,12 +107,10 @@ describe('Public ID Relations', () => {
     });
 
     it('should reject invalid public ID reference', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Try to create user with non-existent public ID
       await expect(
-        db.users.create({
+        db().users.create({
           email: 'invalid@example.com',
           name: 'Invalid User',
           orgId: 'org_nonexistent123456',
@@ -129,23 +121,21 @@ describe('Public ID Relations', () => {
 
   describe('LOOKUP population with public IDs', () => {
     it('should populate relation using public ID', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Create organization
-      const org = await db.organizations.create({
+      const org = await db().organizations.create({
         name: 'Acme Corp',
       });
 
       // Create user
-      await db.users.create({
+      await db().users.create({
         email: 'alice@acme.com',
         name: 'Alice',
         orgId: org.id,
       });
 
       // Fetch users with organization included
-      const users = await db.users.findMany({}, { include: 'organizationData' });
+      const users = await db().users.findMany({}, { include: 'organizationData' });
 
       expect(users[0].organizationData).toBeDefined();
       expect(users[0].organizationData?.id).toBe(org.id);
@@ -153,37 +143,35 @@ describe('Public ID Relations', () => {
     });
 
     it('should populate nested relations with public IDs', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Create organization
-      const org = await db.organizations.create({
+      const org = await db().organizations.create({
         name: 'Acme Corp',
       });
 
       // Create user
-      const user = await db.users.create({
+      const user = await db().users.create({
         email: 'alice@acme.com',
         name: 'Alice',
         orgId: org.id,
       });
 
       // Create post
-      await db.posts.create({
+      await db().posts.create({
         title: 'My First Post',
         content: 'Hello, World!',
         authorId: user.id, // Public ID
       });
 
       // Fetch posts with author included
-      const posts = await db.posts.findMany({}, { include: 'authorData' });
+      const posts = await db().posts.findMany({}, { include: 'authorData' });
 
       expect(posts[0].authorData).toBeDefined();
       expect(posts[0].authorData?.id).toBe(user.id);
       expect(posts[0].authorData?.name).toBe('Alice');
 
       // Verify we can further query the populated author's organization
-      const userWithOrg = await db.users.findOne(
+      const userWithOrg = await db().users.findOne(
         { id: user.id },
         { include: 'organizationData' }
       );
@@ -218,42 +206,40 @@ describe('Public ID Relations', () => {
 
     it('should support lookup with public IDs across collections', async () => {
       // Create a new ORM with the collection
-      const multiOrm = await createTestOrm({
+      const multiDb = await createTestOrm({
         organizations,
         users,
         posts_multi: postsWithMultiLookup,
       });
-      const ctx = multiOrm.createContext({});
-      const db = multiOrm.withContext(ctx);
 
       try {
         // Create organization
-        const org = await db.organizations.create({
+        const org = await multiDb().organizations.create({
           name: 'Acme Corp',
         });
 
         // Create user
-        const user = await db.users.create({
+        const user = await multiDb().users.create({
           email: 'alice@acme.com',
           name: 'Alice',
           orgId: org.id,
         });
 
         // Create post with public ID reference
-        await db.posts_multi.create({
+        await multiDb().posts_multi.create({
           title: 'My Post',
           authorId: user.id, // Public ID
         });
 
         // Fetch with include using public ID
-        const posts = await db.posts_multi.findMany({}, { include: 'authorData' });
+        const posts = await multiDb().posts_multi.findMany({}, { include: 'authorData' });
 
         expect(posts).toHaveLength(1);
         expect(posts[0].authorData).toBeDefined();
         expect(posts[0].authorData?.id).toBe(user.id);
         expect(posts[0].authorData?.name).toBe('Alice');
       } finally {
-        await multiOrm.close();
+        await multiDb.close();
       }
     });
   });

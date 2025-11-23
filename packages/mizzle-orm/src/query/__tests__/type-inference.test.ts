@@ -6,8 +6,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mongoCollection } from '../../collection/collection';
 import { string, objectId } from '../../schema/fields';
 import { lookup } from '../../collection/relations';
-import { defineCollections } from '../../orm/orm';
-import type { InferOrm } from '../../types/orm';
+import { defineSchema } from '../../orm/orm';
+import type { Mizzle } from '../../types/orm';
 import { teardownTestDb, createTestOrm } from '../../test/setup';
 
 describe('Type Inference', () => {
@@ -77,18 +77,17 @@ describe('Type Inference', () => {
     }
   );
 
-  const collections = defineCollections({
+  const schema = defineSchema({
     organizations,
     users,
     posts,
     comments,
   });
 
-  // Use InferOrm helper for clean type inference
-  let orm!: InferOrm<typeof collections>;
+  let db!: Mizzle<typeof schema>;
 
   beforeAll(async () => {
-    orm = await createTestOrm(collections);
+    db = await createTestOrm(schema);
   });
 
   afterAll(async () => {
@@ -96,28 +95,25 @@ describe('Type Inference', () => {
   });
 
   it('should infer types correctly for nested includes', async () => {
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
-
     // Create test data
-    const org = await db.organizations.create({ name: 'Test Org' });
-    const user = await db.users.create({
+    const org = await db().organizations.create({ name: 'Test Org' });
+    const user = await db().users.create({
       name: 'Test User',
       email: 'test@example.com',
       organizationId: org._id,
     });
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'Test Post',
       authorId: user._id,
     });
-    const comment = await db.comments.create({
+    const comment = await db().comments.create({
       text: 'Test Comment',
       authorId: user._id,
       postId: post._id,
     });
 
     // Fetch with nested includes
-    const result = await db.comments.findMany({}, {
+    const result = await db().comments.findMany({}, {
       include: {
         author: {
           include: {
@@ -184,11 +180,8 @@ describe('Type Inference', () => {
   });
 
   it('should show exact type in db facade', () => {
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
-
-    // Type check: db.comments should have proper type, not CollectionFacade<any, any, any, any>
-    type CommentsFacade = typeof db.comments;
+    // Type check: db().comments should have proper type, not CollectionFacade<any, any, any, any>
+    type CommentsFacade = typeof db extends (...args: any[]) => infer R ? R extends { comments: infer C } ? C : never : never;
     type IsAny<T> = 0 extends (1 & T) ? true : false;
     type IsCommentsAny = IsAny<CommentsFacade>;
 

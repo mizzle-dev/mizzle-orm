@@ -4,13 +4,13 @@
 
 import { MongoClient, Db } from 'mongodb';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { createMongoOrm } from '../orm/orm';
-import type { MongoOrm } from '../types/orm';
+import { mizzle } from '../orm/orm';
+import type { Mizzle } from '../types/orm';
 
 let mongoServer: MongoMemoryServer | null = null;
 let mongoClient: MongoClient | null = null;
 let db: Db | null = null;
-let testOrms: MongoOrm<any>[] = [];
+let testOrms: Mizzle<any>[] = [];
 
 /**
  * Start MongoDB Memory Server and connect (called once per test file)
@@ -37,10 +37,10 @@ export async function setupTestDb(): Promise<{ client: MongoClient; db: Db; uri:
  * Cleanup: disconnect and stop server
  */
 export async function teardownTestDb(): Promise<void> {
-  // Close all ORMs created during tests
-  for (const orm of testOrms) {
+  // Close all database instances created during tests
+  for (const db of testOrms) {
     try {
-      await orm.close();
+      await db.close();
     } catch (e) {
       // Ignore errors during cleanup
     }
@@ -76,22 +76,22 @@ export async function clearTestDb(): Promise<void> {
 }
 
 /**
- * Create a test ORM instance with given collections
+ * Create a test ORM instance with given schema
  * Pass a record of collections directly for best type inference
  */
-export async function createTestOrm<TCollections extends Record<string, any>>(
-  collections: TCollections,
-): Promise<MongoOrm<TCollections>> {
+export async function createTestOrm<TSchema extends Record<string, any>>(
+  schema: TSchema,
+): Promise<Mizzle<TSchema>> {
   const { uri } = await setupTestDb();
 
-  const orm = await createMongoOrm({
+  const db = await mizzle({
     uri,
     dbName: 'test',
-    collections,
+    schema,
   });
 
   // Track the ORM for cleanup
-  testOrms.push(orm);
+  testOrms.push(db);
 
-  return orm;
+  return db;
 }

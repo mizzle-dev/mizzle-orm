@@ -3,52 +3,52 @@
  */
 
 import { MongoClient } from 'mongodb';
-import type { OrmConfig, OrmContext, MongoOrm, DbFacade, TransactionHelper } from '../types/orm';
+import type {
+  OrmConfig,
+  OrmContext,
+  MongoOrm,
+  DbFacade,
+  TransactionHelper,
+  MizzleConfig,
+  Mizzle,
+  MizzleTransactionHelper,
+} from '../types/orm';
 import type { AnyRelation } from '../types/collection';
 import { ObjectId } from 'mongodb';
 import { nanoid } from 'nanoid';
 import { CollectionFacade } from '../query/collection-facade';
 
 /**
- * Helper function to create properly typed collections object.
+ * Helper function to create properly typed schema object.
  * This preserves exact types for perfect type inference.
  *
  * @example
  * ```ts
- * const collections = defineCollections({ users, posts });
- * const orm = await createMongoOrm({
+ * const schema = defineSchema({ users, posts });
+ * const db = await mizzle({
  *   uri: process.env.MONGO_URI!,
  *   dbName: 'myapp',
- *   collections,
+ *   schema,
  * });
  * ```
  */
-export function defineCollections<T>(
-  collections: T,
+export function defineSchema<T>(
+  schema: T,
 ): T {
-  return collections;
+  return schema;
 }
 
 /**
- * Create a Mizzle ORM instance
+ * Create a MongoDB ORM instance (internal implementation)
+ *
+ * @internal
+ * This function is used internally by `mizzle()` and is not part of the public API.
+ * Use `mizzle()` instead.
  *
  * @param config - ORM configuration
  * @returns ORM instance
- *
- * @example
- * ```ts
- * const orm = await createMongoOrm({
- *   uri: process.env.MONGO_URI!,
- *   dbName: 'myapp',
- *   collections: [users, projects],
- * });
- *
- * const ctx = orm.createContext({ user, tenantId });
- * const db = orm.withContext(ctx);
- * const user = await db.users.findOne({ email: 'alice@example.com' });
- * ```
  */
-export async function createMongoOrm<TCollections extends Record<string, any>>(
+async function createMongoOrm<TCollections extends Record<string, any>>(
   config: OrmConfig<TCollections>,
 ): Promise<MongoOrm<TCollections>> {
   // Use provided client or create new one
@@ -246,5 +246,81 @@ export async function createMongoOrm<TCollections extends Record<string, any>>(
     close,
     collections,
   };
+}
+
+/**
+ * Create a Mizzle database instance
+ *
+ * @param config - Mizzle configuration
+ * @returns Callable database instance with schema, client, and transaction helpers
+ *
+ * @example
+ * ```ts
+ * const schema = defineSchema({ users, posts });
+ * const db = await mizzle({
+ *   uri: process.env.MONGO_URI!,
+ *   dbName: 'myapp',
+ *   schema,
+ * });
+ *
+ * // Use with context - db is callable!
+ * const user = await db({ user, tenantId }).users.findOne({ email: 'alice@example.com' });
+ *
+ * // Access utilities
+ * db.schema.users  // Collection metadata
+ * db.client        // Raw MongoClient
+ * await db.close() // Cleanup
+ *
+ * // Transactions
+ * await db.tx({}, async (txDb) => {
+ *   await txDb({}).users.create({ name: 'Bob' });
+ * });
+ * ```
+ */
+export async function mizzle<TSchema extends Record<string, any>>(
+  config: MizzleConfig<TSchema>,
+): Promise<Mizzle<TSchema>> {
+  // Convert MizzleConfig to OrmConfig
+  const ormConfig: OrmConfig<TSchema> = {
+    uri: config.uri,
+    dbName: config.dbName,
+    collections: config.schema, // Map schema -> collections internally
+    middlewares: config.middlewares,
+    validation: config.validation,
+    audit: config.audit,
+    devGuardrails: config.devGuardrails,
+    client: config.client,
+    clientOptions: config.clientOptions,
+  };
+
+  // Create the underlying ORM
+  const orm = await createMongoOrm(ormConfig);
+
+  // Create the callable function - db({ context })
+  const dbFunction = (ctx?: Partial<OrmContext>) => {
+    const fullContext = orm.createContext(ctx || {});
+    return orm.withContext(fullContext);
+  };
+
+  // Wrap the tx method to create callable transaction interface
+  const wrappedTx: MizzleTransactionHelper<TSchema> = async (ctx, fn) => {
+    return orm.tx(ctx, async (txOrm) => {
+      // Create a callable function for the transaction ORM
+      const txDbFunction = (txCtx?: Partial<OrmContext>) => {
+        const fullTxContext = orm.createContext(txCtx || {});
+        return txOrm.withContext(fullTxContext);
+      };
+      return fn(txDbFunction as any);
+    });
+  };
+
+  // Attach properties to make it both callable and an object
+  (dbFunction as any).schema = config.schema;
+  (dbFunction as any).client = orm.rawClient();
+  (dbFunction as any).tx = wrappedTx;
+  (dbFunction as any).close = orm.close.bind(orm);
+  (dbFunction as any)._orm = orm;
+
+  return dbFunction as Mizzle<TSchema>;
 }
 

@@ -13,7 +13,8 @@
  */
 
 import {
-  createMongoOrm,
+  mizzle,
+  defineSchema,
   mongoCollection,
   embed,
   objectId,
@@ -153,19 +154,19 @@ const orderItems = mongoCollection(
 // ORM Setup
 // =============================================================================
 
-const orm = await createMongoOrm({
-  uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-  dbName: 'ecommerce_example',
-  collections: {
-    products,
-    customers,
-    orders,
-    orderItems,
-  },
+const schema = defineSchema({
+  products,
+  customers,
+  orders,
+  orderItems,
 });
 
-const ctx = orm.createContext({});
-const db = orm.withContext(ctx);
+const db = await mizzle({
+  uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
+  dbName: 'ecommerce_example',
+  schema,
+});
+
 
 // =============================================================================
 // Example Usage
@@ -179,7 +180,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📦 Creating products...');
 
-  const laptop = await db.products.create({
+  const laptop = await db().products.create({
     sku: 'LAPTOP-001',
     name: 'UltraBook Pro 15"',
     description: 'Powerful laptop for professionals',
@@ -189,7 +190,7 @@ async function main() {
     imageUrl: 'https://example.com/laptop.jpg',
   });
 
-  const mouse = await db.products.create({
+  const mouse = await db().products.create({
     sku: 'MOUSE-001',
     name: 'Wireless Mouse',
     description: 'Ergonomic wireless mouse',
@@ -206,7 +207,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('👤 Creating customer...');
 
-  const customer = await db.customers.create({
+  const customer = await db().customers.create({
     email: 'john@example.com',
     name: 'John Doe',
     phone: '+1-555-0123',
@@ -224,7 +225,7 @@ async function main() {
   const shipping = 15.00;
   const total = subtotal + tax + shipping;
 
-  const order = await db.orders.create({
+  const order = await db().orders.create({
     orderNumber: `ORD-${Date.now()}`,
     customerId: customer.id,
     shippingAddress: {
@@ -250,7 +251,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📝 Adding order items...');
 
-  const item1 = await db.orderItems.create({
+  const item1 = await db().orderItems.create({
     orderId: order._id,
     productId: laptop._id,
     quantity: 1,
@@ -258,7 +259,7 @@ async function main() {
     total: laptop.price,
   });
 
-  const item2 = await db.orderItems.create({
+  const item2 = await db().orderItems.create({
     orderId: order._id,
     productId: mouse._id,
     quantity: 2,
@@ -280,14 +281,14 @@ async function main() {
   const oldPrice = laptop.price;
   const newPrice = 1399.99;
 
-  await db.products.updateById(laptop._id, {
+  await db().products.updateById(laptop._id, {
     price: newPrice,
   });
 
   console.log(`✅ Updated laptop price: $${oldPrice} → $${newPrice}`);
 
   // Check order item - should still have OLD price (historical snapshot)
-  const itemAfterPriceChange = await db.orderItems.findById(item1._id);
+  const itemAfterPriceChange = await db().orderItems.findById(item1._id);
   console.log(`   Order item still shows: $${itemAfterPriceChange?.unitPrice}`);
   console.log(`   Product name: "${itemAfterPriceChange?.product?.name}"`);
   console.log(`   ✅ Historical snapshot preserved!\n`);
@@ -297,7 +298,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📧 Updating customer email...');
 
-  await db.customers.updateOne(
+  await db().customers.updateOne(
     { id: customer.id },
     { email: 'john.doe@newmail.com' }
   );
@@ -305,7 +306,7 @@ async function main() {
   console.log(`✅ Updated customer email`);
 
   // Check order - should have NEW email (auto-updated)
-  const orderAfterEmailChange = await db.orders.findById(order._id);
+  const orderAfterEmailChange = await db().orders.findById(order._id);
   console.log(`   Order now shows: ${orderAfterEmailChange?.customer?.email}`);
   console.log(`   ✅ Contact info auto-updated!\n`);
 
@@ -314,7 +315,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('👤 Updating customer name...');
 
-  await db.customers.updateOne(
+  await db().customers.updateOne(
     { id: customer.id },
     { name: 'Jonathan Doe' }
   );
@@ -322,7 +323,7 @@ async function main() {
   console.log(`✅ Updated customer name to "Jonathan Doe"`);
 
   // Check order - should still have OLD name (not in watchFields)
-  const orderAfterNameChange = await db.orders.findById(order._id);
+  const orderAfterNameChange = await db().orders.findById(order._id);
   console.log(`   Order still shows: ${orderAfterNameChange?.customer?.name}`);
   console.log(`   ✅ Historical name preserved (not in watchFields)!\n`);
 
@@ -331,8 +332,8 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📋 Complete Order Details:\n');
 
-  const fullOrder = await db.orders.findById(order._id);
-  const items = await db.orderItems.findMany({ orderId: order._id });
+  const fullOrder = await db().orders.findById(order._id);
+  const items = await db().orderItems.findMany({ orderId: order._id });
 
   console.log(`  Order: ${fullOrder?.orderNumber}`);
   console.log(`  Status: ${fullOrder?.status}`);
@@ -365,7 +366,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('💡 Price Comparison:\n');
 
-  const currentLaptop = await db.products.findById(laptop._id);
+  const currentLaptop = await db().products.findById(laptop._id);
 
   console.log(`  ${laptop.name}:`);
   console.log(`    Current price: $${currentLaptop?.price.toFixed(2)}`);
@@ -389,7 +390,7 @@ async function main() {
 // Run example
 main()
   .then(async () => {
-    await orm.close();
+    await db.close();
     process.exit(0);
   })
   .catch((error) => {

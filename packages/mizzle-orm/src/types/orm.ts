@@ -248,3 +248,88 @@ export interface MongoOrm<TCollections extends Record<string, any> = any> {
  * ```
  */
 export type InferOrm<TCollections extends Record<string, any>> = MongoOrm<TCollections>;
+
+/**
+ * Mizzle configuration
+ */
+export interface MizzleConfig<TSchema extends Record<string, any> = Record<string, any>> {
+  uri?: string; // Optional if client is provided
+  dbName: string;
+  schema: TSchema;
+
+  middlewares?: OrmMiddleware[];
+  validation?: ValidationConfig;
+  audit?: AuditOrmConfig;
+  devGuardrails?: DevGuardrailsConfig;
+
+  // MongoDB client (provide for connection pooling)
+  client?: MongoClient;
+
+  // MongoDB client options (only used if client is not provided)
+  clientOptions?: Parameters<typeof MongoClient.connect>[1];
+}
+
+/**
+ * Mizzle callable function signature
+ */
+export interface MizzleFunction<TSchema extends Record<string, any>> {
+  (ctx?: Partial<OrmContext>): DbFacade<TSchema>;
+}
+
+/**
+ * Mizzle transaction function signature
+ * Similar to MizzleFunction, but used within transactions
+ */
+export interface MizzleTransactionFunction<TSchema extends Record<string, any>> {
+  (ctx?: Partial<OrmContext>): DbFacade<TSchema>;
+}
+
+/**
+ * Mizzle transaction helper
+ * Uses a callable transaction function instead of MongoOrmTransaction
+ */
+export interface MizzleTransactionHelper<TSchema extends Record<string, any>> {
+  <T>(ctx: OrmContext, fn: (tx: MizzleTransactionFunction<TSchema>) => Promise<T>): Promise<T>;
+}
+
+/**
+ * Mizzle properties
+ */
+export interface MizzleProperties<TSchema extends Record<string, any>> {
+  /** Schema definitions (collection metadata) */
+  schema: TSchema;
+
+  /** Raw MongoDB client */
+  client: MongoClient;
+
+  /** Transaction helper */
+  tx: MizzleTransactionHelper<TSchema>;
+
+  /** Close database connection */
+  close(): Promise<void>;
+
+  /** Internal ORM instance (for advanced use cases) */
+  _orm: MongoOrm<TSchema>;
+}
+
+/**
+ * Mizzle - The main database instance
+ *
+ * Can be called as a function to get a scoped database facade,
+ * or accessed as an object for utilities and metadata.
+ *
+ * @example
+ * ```typescript
+ * const db = await mizzle({ uri, dbName, schema });
+ *
+ * // Call with context
+ * await db({ user }).users.findMany({});
+ *
+ * // Access utilities
+ * db.schema.users  // Collection metadata
+ * db.client        // MongoClient
+ * await db.close() // Cleanup
+ * ```
+ */
+export type Mizzle<TSchema extends Record<string, any>> =
+  MizzleFunction<TSchema> & MizzleProperties<TSchema>;

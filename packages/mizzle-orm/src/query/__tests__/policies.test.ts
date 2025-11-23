@@ -6,11 +6,11 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, objectId } from '../../schema/fields';
-import type { MongoOrm } from '../../types/orm';
+import type { Mizzle } from '../../types/orm';
 import { ObjectId } from 'mongodb';
 
 describe('Policies', () => {
-  let orm: MongoOrm;
+  let db: Mizzle;
 
   // Test collection with policies
   const documents = mongoCollection(
@@ -46,7 +46,7 @@ describe('Policies', () => {
   const user2_Id = new ObjectId();
 
   beforeAll(async () => {
-    orm = await createTestOrm({ documents });
+    db = await createTestOrm({ documents });
   });
 
   afterAll(async () => {
@@ -59,11 +59,8 @@ describe('Policies', () => {
 
   describe('readFilter', () => {
     it('should filter results by ownership', async () => {
-      const user1Ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const user2Ctx = orm.createContext({ user: { id: user2_Id.toString() } });
-
-      const db1 = orm.withContext(user1Ctx);
-      const db2 = orm.withContext(user2Ctx);
+      const db1 = db({ user: { id: user1_Id.toString() } });
+      const db2 = db({ user: { id: user2_Id.toString() } });
 
       // Create docs for both users through raw collection (bypass policies)
       const raw = db1.documents.rawCollection();
@@ -83,10 +80,7 @@ describe('Policies', () => {
 
   describe('canInsert', () => {
     it('should allow insert when policy passes', async () => {
-      const ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const db = orm.withContext(ctx);
-
-      const doc = await db.documents.create({
+      const doc = await db({ user: { id: user1_Id.toString() } }).documents.create({
         title: 'My Document',
         ownerId: user1_Id,
       });
@@ -95,11 +89,8 @@ describe('Policies', () => {
     });
 
     it('should reject insert when policy fails', async () => {
-      const ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const db = orm.withContext(ctx);
-
       await expect(
-        db.documents.create({
+        db({ user: { id: user1_Id.toString() } }).documents.create({
           title: 'Someone Elses Doc',
           ownerId: user2_Id,
         })
@@ -109,24 +100,18 @@ describe('Policies', () => {
 
   describe('canUpdate', () => {
     it('should allow update when policy passes', async () => {
-      const ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const db = orm.withContext(ctx);
-
-      const doc = await db.documents.create({
+      const doc = await db({ user: { id: user1_Id.toString() } }).documents.create({
         title: 'Original',
         ownerId: user1_Id,
       });
 
-      const updated = await db.documents.updateById(doc._id, { title: 'Updated' });
+      const updated = await db({ user: { id: user1_Id.toString() } }).documents.updateById(doc._id, { title: 'Updated' });
       expect(updated?.title).toBe('Updated');
     });
 
     it('should reject update when policy fails', async () => {
-      const user1Ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const user2Ctx = orm.createContext({ user: { id: user2_Id.toString() } });
-
-      const db1 = orm.withContext(user1Ctx);
-      const db2 = orm.withContext(user2Ctx);
+      const db1 = db({ user: { id: user1_Id.toString() } });
+      const db2 = db({ user: { id: user2_Id.toString() } });
 
       // User 1 creates a document
       const doc = await db1.documents.create({
@@ -142,24 +127,18 @@ describe('Policies', () => {
 
   describe('canDelete', () => {
     it('should allow delete when policy passes', async () => {
-      const ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const db = orm.withContext(ctx);
-
-      const doc = await db.documents.create({
+      const doc = await db({ user: { id: user1_Id.toString() } }).documents.create({
         title: 'To Delete',
         ownerId: user1_Id,
       });
 
-      const deleted = await db.documents.deleteById(doc._id);
+      const deleted = await db({ user: { id: user1_Id.toString() } }).documents.deleteById(doc._id);
       expect(deleted).toBe(true);
     });
 
     it('should reject delete when policy fails', async () => {
-      const user1Ctx = orm.createContext({ user: { id: user1_Id.toString() } });
-      const user2Ctx = orm.createContext({ user: { id: user2_Id.toString() } });
-
-      const db1 = orm.withContext(user1Ctx);
-      const db2 = orm.withContext(user2Ctx);
+      const db1 = db({ user: { id: user1_Id.toString() } });
+      const db2 = db({ user: { id: user2_Id.toString() } });
 
       // User 1 creates a document
       const doc = await db1.documents.create({

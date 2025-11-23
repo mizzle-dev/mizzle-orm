@@ -7,10 +7,10 @@ import { ObjectId } from 'mongodb';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, number } from '../../schema/fields';
-import type { MongoOrm } from '../../types/orm';
+import type { Mizzle } from '../../types/orm';
 
 describe('Hooks', () => {
-  let orm: MongoOrm;
+  let db: Mizzle;
   const hookCalls: string[] = [];
 
   // Test collection with hooks
@@ -59,7 +59,7 @@ describe('Hooks', () => {
   );
 
   beforeAll(async () => {
-    orm = await createTestOrm({ products });
+    db = await createTestOrm({ products });
   });
 
   afterAll(async () => {
@@ -73,19 +73,15 @@ describe('Hooks', () => {
 
   describe('beforeInsert / afterInsert', () => {
     it('should run before and after insert hooks', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      await db.products.create({ name: 'Test Product', price: 99 });
+      await db().products.create({ name: 'Test Product', price: 99 });
 
       expect(hookCalls).toEqual(['beforeInsert', 'afterInsert']);
     });
 
     it('should allow beforeInsert to transform document', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const product = await db.products.create({
+      const product = await db().products.create({
         name: 'Amazing Product',
         price: 199,
       });
@@ -96,31 +92,27 @@ describe('Hooks', () => {
 
   describe('beforeUpdate / afterUpdate', () => {
     it('should run before and after update hooks', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const product = await db.products.create({
+      const product = await db().products.create({
         name: 'Original',
         price: 50,
       });
 
       hookCalls.length = 0; // Clear create hooks
 
-      await db.products.updateById(product._id, { price: 75 });
+      await db().products.updateById(product._id, { price: 75 });
 
       expect(hookCalls).toEqual(['beforeUpdate', 'afterUpdate']);
     });
 
     it('should allow beforeUpdate to transform document', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const product = await db.products.create({
+      const product = await db().products.create({
         name: 'Original Name',
         price: 50,
       });
 
-      const updated = await db.products.updateById(product._id, {
+      const updated = await db().products.updateById(product._id, {
         name: 'New Name',
       });
 
@@ -130,17 +122,15 @@ describe('Hooks', () => {
 
   describe('beforeDelete / afterDelete', () => {
     it('should run before and after delete hooks', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const product = await db.products.create({
+      const product = await db().products.create({
         name: 'To Delete',
         price: 100,
       });
 
       hookCalls.length = 0; // Clear create hooks
 
-      await db.products.deleteById(product._id);
+      await db().products.deleteById(product._id);
 
       expect(hookCalls).toEqual(['beforeDelete', 'afterDelete']);
     });
@@ -148,11 +138,9 @@ describe('Hooks', () => {
 
   describe('hook execution order', () => {
     it('should execute hooks in correct order for full lifecycle', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Create
-      const product = await db.products.create({
+      const product = await db().products.create({
         name: 'Lifecycle Test',
         price: 123,
       });
@@ -161,13 +149,13 @@ describe('Hooks', () => {
       hookCalls.length = 0;
 
       // Update
-      await db.products.updateById(product._id, { price: 456 });
+      await db().products.updateById(product._id, { price: 456 });
       expect(hookCalls).toEqual(['beforeUpdate', 'afterUpdate']);
 
       hookCalls.length = 0;
 
       // Delete
-      await db.products.deleteById(product._id);
+      await db().products.deleteById(product._id);
       expect(hookCalls).toEqual(['beforeDelete', 'afterDelete']);
     });
   });

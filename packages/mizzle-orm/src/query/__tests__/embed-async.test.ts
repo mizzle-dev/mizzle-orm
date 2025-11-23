@@ -47,16 +47,14 @@ describe('Async Propagation Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Alice',
       email: 'alice@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
@@ -64,20 +62,20 @@ describe('Async Propagation Strategy', () => {
     expect(post.author?.name).toBe('Alice');
 
     // Update author
-    await db.authors.updateById(author._id, {
+    await db().authors.updateById(author._id, {
       name: 'Alice Smith',
       email: 'alice.smith@example.com',
     });
 
     // Immediately after update, embedded data should NOT be updated yet (async)
-    const postImmediately = await db.posts.findById(post._id);
+    const postImmediately = await db().posts.findById(post._id);
     expect(postImmediately?.author?.name).toBe('Alice'); // Still old data
 
     // Wait for async propagation to complete
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // Now the embedded data should be updated
-    const postAfterAsync = await db.posts.findById(post._id);
+    const postAfterAsync = await db().posts.findById(post._id);
     expect(postAfterAsync?.author?.name).toBe('Alice Smith');
     expect(postAfterAsync?.author?.email).toBe('alice.smith@example.com');
 
@@ -113,28 +111,26 @@ describe('Async Propagation Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Bob',
       email: 'bob@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
 
     // Update author
-    await db.authors.updateById(author._id, {
+    await db().authors.updateById(author._id, {
       name: 'Bob Smith',
       email: 'bob.smith@example.com',
     });
 
     // Immediately after update, embedded data should be updated (sync)
-    const updatedPost = await db.posts.findById(post._id);
+    const updatedPost = await db().posts.findById(post._id);
     expect(updatedPost?.author?.name).toBe('Bob Smith');
     expect(updatedPost?.author?.email).toBe('bob.smith@example.com');
 
@@ -167,27 +163,25 @@ describe('Async Propagation Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Charlie',
       email: 'charlie@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
 
     // Update author
-    await db.authors.updateById(author._id, {
+    await db().authors.updateById(author._id, {
       name: 'Charlie Brown',
     });
 
     // Should be updated immediately (sync is default)
-    const updatedPost = await db.posts.findById(post._id);
+    const updatedPost = await db().posts.findById(post._id);
     expect(updatedPost?.author?.name).toBe('Charlie Brown');
 
   });

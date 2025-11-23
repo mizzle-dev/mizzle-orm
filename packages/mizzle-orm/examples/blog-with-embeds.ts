@@ -11,7 +11,8 @@
  */
 
 import {
-  createMongoOrm,
+  mizzle,
+  defineSchema,
   mongoCollection,
   embed,
   objectId,
@@ -174,20 +175,20 @@ const comments = mongoCollection(
 // ORM Setup
 // =============================================================================
 
-const orm = await createMongoOrm({
-  uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-  dbName: 'blog_embeds_example',
-  collections: {
-    users,
-    categories,
-    tags,
-    posts,
-    comments,
-  },
+const schema = defineSchema({
+  users,
+  categories,
+  tags,
+  posts,
+  comments,
 });
 
-const ctx = orm.createContext({});
-const db = orm.withContext(ctx);
+const db = await mizzle({
+  uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
+  dbName: 'blog_embeds_example',
+  schema,
+});
+
 
 // =============================================================================
 // Example Usage
@@ -201,26 +202,26 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📝 Creating base data...');
 
-  const alice = await db.users.create({
+  const alice = await db().users.create({
     name: 'Alice Johnson',
     email: 'alice@example.com',
     avatar: 'https://i.pravatar.cc/150?img=1',
     bio: 'Tech writer and developer advocate',
   });
 
-  const techCategory = await db.categories.create({
+  const techCategory = await db().categories.create({
     slug: 'technology',
     title: 'Technology',
     description: 'Latest in tech',
     color: '#3B82F6',
   });
 
-  const tag1 = await db.tags.create({
+  const tag1 = await db().tags.create({
     name: 'TypeScript',
     color: '#007ACC',
   });
 
-  const tag2 = await db.tags.create({
+  const tag2 = await db().tags.create({
     name: 'MongoDB',
     color: '#4DB33D',
   });
@@ -234,7 +235,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📰 Creating post (embeds added automatically)...');
 
-  const post = await db.posts.create({
+  const post = await db().posts.create({
     title: 'Getting Started with Mizzle ORM',
     slug: 'getting-started-mizzle',
     content: 'Mizzle is a modern MongoDB ORM with amazing features...',
@@ -257,7 +258,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('💬 Adding comment...');
 
-  const comment = await db.comments.create({
+  const comment = await db().comments.create({
     postId: post._id,
     authorId: alice.id,
     content: 'Great article! Very helpful.',
@@ -274,7 +275,7 @@ async function main() {
   console.log('🔄 Testing auto-updates...');
 
   // Update user name
-  await db.users.updateOne(
+  await db().users.updateOne(
     { id: alice.id },
     { name: 'Alice J. Smith' }
   );
@@ -282,11 +283,11 @@ async function main() {
   console.log(`✅ Updated user name to "Alice J. Smith"`);
 
   // Query post - should have updated author name
-  const updatedPost = await db.posts.findById(post._id);
+  const updatedPost = await db().posts.findById(post._id);
   console.log(`   Post author name: ${updatedPost?.author?.name}`);
 
   // Query comment - should also have updated author name
-  const updatedComment = await db.comments.findById(comment._id);
+  const updatedComment = await db().comments.findById(comment._id);
   console.log(`   Comment author name: ${updatedComment?.author?.name}`);
   console.log();
 
@@ -296,14 +297,14 @@ async function main() {
   console.log('📸 Testing historical snapshot...');
 
   // Update post title
-  await db.posts.updateById(post._id, {
+  await db().posts.updateById(post._id, {
     title: 'UPDATED: Getting Started with Mizzle ORM',
   });
 
   console.log(`✅ Updated post title`);
 
   // Query comment - should still have OLD post title (snapshot)
-  const commentAfterPostUpdate = await db.comments.findById(comment._id);
+  const commentAfterPostUpdate = await db().comments.findById(comment._id);
   console.log(`   Comment's post title: "${commentAfterPostUpdate?.post?.title}"`);
   console.log(`   (Still shows original title - historical snapshot)`);
   console.log();
@@ -314,7 +315,7 @@ async function main() {
   console.log('🔍 Testing query-time refresh...');
 
   // Update category (bypassing ORM to simulate stale data)
-  await db.categories.rawCollection().updateOne(
+  await db().categories.rawCollection().updateOne(
     { _id: techCategory._id },
     { $set: { title: 'Tech & Innovation', color: '#10B981' } }
   );
@@ -322,18 +323,18 @@ async function main() {
   console.log(`✅ Updated category title (bypassed auto-update)`);
 
   // Normal query - has stale data
-  const postsWithStale = await db.posts.findMany({});
+  const postsWithStale = await db().posts.findMany({});
   console.log(`   Normal query - category: ${postsWithStale[0].category?.title}`);
 
   // Query with refresh - gets fresh data (not persisted)
-  const postsWithFresh = await db.posts.findMany(
+  const postsWithFresh = await db().posts.findMany(
     {},
     { refreshEmbeds: ['category'] }
   );
   console.log(`   Refreshed query - category: ${postsWithFresh[0].category?.title}`);
 
   // Verify DB wasn't updated
-  const postFromDb = await db.posts.findById(post._id);
+  const postFromDb = await db().posts.findById(post._id);
   console.log(`   DB still has: ${postFromDb?.category?.title} (not persisted)`);
   console.log();
 
@@ -342,7 +343,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('🔧 Testing manual batch refresh...');
 
-  const stats = await db.posts.refreshEmbeds('category', {
+  const stats = await db().posts.refreshEmbeds('category', {
     batchSize: 10,
     dryRun: false,
   });
@@ -353,7 +354,7 @@ async function main() {
   console.log(`   Errors: ${stats.errors}`);
 
   // Verify updates were persisted
-  const postAfterRefresh = await db.posts.findById(post._id);
+  const postAfterRefresh = await db().posts.findById(post._id);
   console.log(`   Category now: ${postAfterRefresh?.category?.title}`);
   console.log();
 
@@ -363,12 +364,12 @@ async function main() {
   console.log('🏷️  Testing array embeds...');
 
   // Update tag
-  await db.tags.updateById(tag1._id, {
+  await db().tags.updateById(tag1._id, {
     name: 'TypeScript 5.x',
     color: '#0074C1',
   });
 
-  const postWithUpdatedTags = await db.posts.findById(post._id);
+  const postWithUpdatedTags = await db().posts.findById(post._id);
   console.log(`✅ Tag auto-updated:`);
   console.log(`   Tags:`, postWithUpdatedTags?.tags);
   console.log();
@@ -378,7 +379,7 @@ async function main() {
   // ---------------------------------------------------------------------------
   console.log('📋 All posts:');
 
-  const allPosts = await db.posts.findMany({ status: 'published' });
+  const allPosts = await db().posts.findMany({ status: 'published' });
 
   for (const p of allPosts) {
     console.log(`\n  "${p.title}"`);
@@ -406,7 +407,7 @@ async function main() {
 // Run example
 main()
   .then(async () => {
-    await orm.close();
+    await db.close();
     process.exit(0);
   })
   .catch((error) => {

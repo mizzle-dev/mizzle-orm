@@ -8,7 +8,8 @@ import {
   string,
   number,
   date,
-  createMongoOrm,
+  mizzle,
+  defineSchema,
   lookup,
 } from '../src/index';
 
@@ -96,40 +97,45 @@ const comments = mongoCollection(
 
 async function relationsExample() {
   // Connect to MongoDB
-  const orm = await createMongoOrm({
-    uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
-    dbName: 'mizzle_relations_example',
-    collections: { organizations, users, posts, comments },
+  const schema = defineSchema({
+    organizations,
+    users,
+    posts,
+    comments,
   });
 
-  const ctx = orm.createContext({});
-  const db = orm.withContext(ctx);
+  const db = await mizzle({
+    uri: process.env.MONGO_URI || 'mongodb://localhost:27017',
+    dbName: 'mizzle_relations_example',
+    schema,
+  });
+
 
   try {
     console.log('\n🎉 World-Class Relations API Demo\n');
 
     // 1. SETUP: Create test data
     console.log('=== Setup ===');
-    const org = await db.organizations.create({
+    const org = await db().organizations.create({
       name: 'Acme Corp',
     });
     console.log('Created org:', org.name);
 
-    const user = await db.users.create({
+    const user = await db().users.create({
       email: 'alice@acme.com',
       name: 'Alice',
       orgId: org._id,
     });
     console.log('Created user:', user.name);
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My First Post',
       content: 'Hello, World!',
       authorId: user._id,
     });
     console.log('Created post:', post.title);
 
-    await db.comments.create({
+    await db().comments.create({
       postId: post._id,
       authorId: user._id,
       content: 'Great post!',
@@ -138,7 +144,7 @@ async function relationsExample() {
 
     // 2. SINGLE INCLUDE - Simple and clean!
     console.log('\n=== Single Include ===');
-    const postsWithAuthor = await db.posts.findMany({}, { include: 'author' });
+    const postsWithAuthor = await db().posts.findMany({}, { include: 'author' });
 
     console.log('Post:', postsWithAuthor[0].title);
     console.log('Author:', postsWithAuthor[0].author?.name); // ✅ Perfect autocomplete!
@@ -146,7 +152,7 @@ async function relationsExample() {
 
     // 3. MULTIPLE INCLUDES - Natural object syntax!
     console.log('\n=== Multiple Includes ===');
-    const commentsPopulated = await db.comments.findMany(
+    const commentsPopulated = await db().comments.findMany(
       {},
       {
         include: {
@@ -164,7 +170,7 @@ async function relationsExample() {
     console.log('\n=== Nested Includes (Coming Soon) ===');
     console.log('Nested includes will support queries like:');
     console.log(`
-    const postsWithAuthorAndOrg = await db.posts.findMany({}, {
+    const postsWithAuthorAndOrg = await db().posts.findMany({}, {
       include: {
         author: {
           include: {
@@ -180,7 +186,7 @@ async function relationsExample() {
     console.log('\n✅ All includes use single MongoDB $lookup queries!');
     console.log('✅ Perfect TypeScript inference!');
   } finally {
-    await orm.close();
+    await db.close();
   }
 }
 

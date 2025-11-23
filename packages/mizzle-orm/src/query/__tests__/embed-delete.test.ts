@@ -44,16 +44,14 @@ describe('Embed Delete - Nullify Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Alice',
       email: 'alice@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
@@ -63,10 +61,10 @@ describe('Embed Delete - Nullify Strategy', () => {
     expect(post.author?.name).toBe('Alice');
 
     // Delete the author
-    await db.authors.deleteById(author._id);
+    await db().authors.deleteById(author._id);
 
     // Post should still exist, but author field should be null
-    const updatedPost = await db.posts.findById(post._id);
+    const updatedPost = await db().posts.findById(post._id);
     expect(updatedPost).toBeDefined();
     expect(updatedPost?.author).toBeNull();
     expect(updatedPost?.authorId).toBeNull(); // Reference also nullified
@@ -102,16 +100,14 @@ describe('Embed Delete - Clear Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Bob',
       email: 'bob@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
@@ -119,10 +115,10 @@ describe('Embed Delete - Clear Strategy', () => {
     expect(post.author).toBeDefined();
 
     // Delete the author
-    await db.authors.deleteById(author._id);
+    await db().authors.deleteById(author._id);
 
     // Post should still exist with reference, but no embedded data
-    const updatedPost = await db.posts.findById(post._id);
+    const updatedPost = await db().posts.findById(post._id);
     expect(updatedPost).toBeDefined();
     expect(updatedPost?.authorId).toEqual(author._id); // Reference kept
     expect(updatedPost?.author).toBeNull(); // Embed cleared
@@ -158,36 +154,34 @@ describe('Embed Delete - Cascade Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Charlie',
       email: 'charlie@example.com',
     });
 
-    const post1 = await db.posts.create({
+    const post1 = await db().posts.create({
       title: 'Post 1',
       authorId: author._id,
     });
 
-    const post2 = await db.posts.create({
+    const post2 = await db().posts.create({
       title: 'Post 2',
       authorId: author._id,
     });
 
     // Both posts exist
-    expect(await db.posts.count({ title: 'Post 1' })).toBe(1);
-    expect(await db.posts.count({ title: 'Post 2' })).toBe(1);
+    expect(await db().posts.count({ title: 'Post 1' })).toBe(1);
+    expect(await db().posts.count({ title: 'Post 2' })).toBe(1);
 
     // Delete the author
-    await db.authors.deleteById(author._id);
+    await db().authors.deleteById(author._id);
 
     // Both posts should be deleted
-    expect(await db.posts.findById(post1._id)).toBeNull();
-    expect(await db.posts.findById(post2._id)).toBeNull();
-    expect(await db.posts.count()).toBe(0);
+    expect(await db().posts.findById(post1._id)).toBeNull();
+    expect(await db().posts.findById(post2._id)).toBeNull();
+    expect(await db().posts.count()).toBe(0);
 
   });
 });
@@ -220,16 +214,14 @@ describe('Embed Delete - No Action (default)', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Dave',
       email: 'dave@example.com',
     });
 
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       authorId: author._id,
     });
@@ -238,10 +230,10 @@ describe('Embed Delete - No Action (default)', () => {
     expect(originalAuthor).toBeDefined();
 
     // Delete the author
-    await db.authors.deleteById(author._id);
+    await db().authors.deleteById(author._id);
 
     // Post should still exist with embedded data unchanged (stale data)
-    const updatedPost = await db.posts.findById(post._id);
+    const updatedPost = await db().posts.findById(post._id);
     expect(updatedPost).toBeDefined();
     expect(updatedPost?.authorId).toEqual(author._id);
     if (Array.isArray(updatedPost?.author)) throw new Error('Expected single embed');
