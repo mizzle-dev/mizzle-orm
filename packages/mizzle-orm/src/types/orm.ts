@@ -277,6 +277,22 @@ export interface MizzleFunction<TSchema extends Record<string, any>> {
 }
 
 /**
+ * Mizzle transaction function signature
+ * Similar to MizzleFunction, but used within transactions
+ */
+export interface MizzleTransactionFunction<TSchema extends Record<string, any>> {
+  (ctx?: Partial<OrmContext>): DbFacade<TSchema>;
+}
+
+/**
+ * Mizzle transaction helper
+ * Uses a callable transaction function instead of MongoOrmTransaction
+ */
+export interface MizzleTransactionHelper<TSchema extends Record<string, any>> {
+  <T>(ctx: OrmContext, fn: (tx: MizzleTransactionFunction<TSchema>) => Promise<T>): Promise<T>;
+}
+
+/**
  * Mizzle properties
  */
 export interface MizzleProperties<TSchema extends Record<string, any>> {
@@ -287,7 +303,7 @@ export interface MizzleProperties<TSchema extends Record<string, any>> {
   client: MongoClient;
 
   /** Transaction helper */
-  tx: TransactionHelper;
+  tx: MizzleTransactionHelper<TSchema>;
 
   /** Close database connection */
   close(): Promise<void>;

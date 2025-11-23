@@ -11,6 +11,7 @@ import type {
   TransactionHelper,
   MizzleConfig,
   Mizzle,
+  MizzleTransactionHelper,
 } from '../types/orm';
 import type { AnyRelation } from '../types/collection';
 import { ObjectId } from 'mongodb';
@@ -332,7 +333,7 @@ export async function mizzle<TSchema extends Record<string, any>>(
   };
 
   // Wrap the tx method to create callable transaction interface
-  const wrappedTx: TransactionHelper = async (ctx, fn) => {
+  const wrappedTx: MizzleTransactionHelper<TSchema> = async (ctx, fn) => {
     return orm.tx(ctx, async (txOrm) => {
       // Create a callable function for the transaction ORM
       const txDbFunction = (txCtx?: Partial<OrmContext>) => {

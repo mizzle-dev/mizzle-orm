@@ -1,5 +1,13 @@
 /**
  * Type utilities for relation includes
+ *
+ * PERFORMANCE NOTE:
+ * These types use recursive conditional extraction for perfect type inference.
+ * For very large schemas (200+ collections) or deep nesting (10+ levels),
+ * TypeScript compilation may be slow. Consider:
+ * - Splitting schemas into modules
+ * - Limiting include depth in tsconfig: "noUncheckedIndexedAccess": true
+ * - Using type assertions for extreme edge cases
  */
 
 import type { CollectionDefinition, RelationTargets } from './collection';

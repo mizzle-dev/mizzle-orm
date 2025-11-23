@@ -59,8 +59,6 @@ describe('mizzle() API', () => {
 
   let db!: Mizzle<typeof schema>;
 
-  db({}).organizations
-
   beforeAll(async () => {
     const { uri } = await setupTestDb();
     db = await mizzle({
