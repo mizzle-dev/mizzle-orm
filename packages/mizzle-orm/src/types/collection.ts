@@ -92,7 +92,7 @@ export interface ReverseEmbedConfig {
  * Field selection type
  * Supports both array syntax and MongoDB projection syntax
  */
-export type FieldSelection = string[] | Record<string, 1 | 0>;
+export type FieldSelection = string[] | readonly string[] | Record<string, 1 | 0>;
 
 /**
  * Forward embed configuration

@@ -311,7 +311,7 @@ export class RelationHelper<TDoc extends Document> {
    */
   private extractFields(
     doc: Document,
-    fields: string[] | Record<string, 1 | 0>,
+    fields: string[] | readonly string[] | Record<string, 1 | 0>,
     embedIdField: string = '_id',
   ): Document {
     if (Array.isArray(fields)) {
@@ -334,7 +334,7 @@ export class RelationHelper<TDoc extends Document> {
       const result: Document = {};
 
       // Always include the ID field unless explicitly excluded (convert to string)
-      if (fields._id !== 0 && embedIdField in doc) {
+      if (!('_id' in fields && fields._id === 0) && embedIdField in doc) {
         const idValue = doc[embedIdField];
         result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
       }

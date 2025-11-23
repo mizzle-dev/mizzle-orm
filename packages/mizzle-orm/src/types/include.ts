@@ -22,33 +22,59 @@ type ExtractTarget<TRelation> = TRelation extends { _targetCollection?: infer T 
   : never;
 
 /**
- * Apply field selection to a document type
- * Supports array syntax: ['name', 'email']
- * For now, projection syntax ({ name: 1, email: 1 }) returns the full document
- * (More sophisticated projection type inference can be added later)
+ * Extract the _id type from a document
  */
-type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Array<infer K>
-  ? K extends keyof TDoc
-    ? Pick<TDoc, K>
-    : TDoc
-  : TDoc; // Projection syntax: return full doc for now
+type ExtractIdType<TDoc> = TDoc extends { _id: infer TId } ? TId : any;
+
+/**
+ * Apply field selection to a document type
+ * Supports:
+ * - Array syntax: ['name', 'email'] - picks only those fields plus _id
+ * - Projection syntax: { name: 1, email: 1 } - includes fields marked with 1/true
+ * - Projection exclusion: { password: 0 } - all fields except those marked 0/false
+ *
+ * Note: MongoDB always includes _id unless explicitly excluded with _id: 0
+ * Nested paths like 'profile.avatar' work at runtime but have limited type safety
+ */
+type ApplyFieldSelection<TDoc, TSelect> = TSelect extends readonly string[]
+  ? // Array syntax: ['name', 'email', 'profile.avatar']
+    // Extract only the keys that actually exist in TDoc
+    Pick<TDoc, Extract<TSelect[number], keyof TDoc>> & { _id: ExtractIdType<TDoc> }
+  : TSelect extends Record<string, any>
+    ? // MongoDB projection syntax: { name: 1, email: 1, password: 0 }
+      {
+        // Include fields marked with 1 or true
+        [K in keyof TDoc as K extends keyof TSelect
+          ? TSelect[K] extends 0 | false
+            ? never
+            : K
+          : never]: TDoc[K];
+      } & {
+        // Always include _id unless explicitly excluded with _id: 0
+        _id: '_id' extends keyof TSelect
+          ? TSelect['_id'] extends 0 | false
+            ? never
+            : ExtractIdType<TDoc>
+          : ExtractIdType<TDoc>;
+      }
+    : TDoc; // No select specified: return full document
 
 /**
  * Configuration for nested includes on a related collection
  * Can accept either a CollectionDefinition directly or extract from TypedRelation
  */
 export type NestedIncludeConfig<TTargetOrRelation> =
-  ExtractTarget<TTargetOrRelation> extends CollectionDefinition<any, infer TNestedRelations>
+  ExtractTarget<TTargetOrRelation> extends CollectionDefinition<infer TSchema, infer TNestedRelations>
     ? {
-        select?: string[] | Record<string, any>; // More permissive - array or any object with field specs
+        select?: readonly (keyof InferDocument<CollectionDefinition<TSchema, TNestedRelations>>)[] | Record<string, any>;
         include?: IncludeConfig<TNestedRelations>;
         where?: Record<string, any>;
         sort?: Record<string, 1 | -1>;
         limit?: number;
       }
-    : TTargetOrRelation extends CollectionDefinition<any, infer TNestedRelations>
+    : TTargetOrRelation extends CollectionDefinition<infer TSchema, infer TNestedRelations>
       ? {
-          select?: string[] | Record<string, any>; // More permissive
+          select?: readonly (keyof InferDocument<CollectionDefinition<TSchema, TNestedRelations>>)[] | Record<string, any>;
           include?: IncludeConfig<TNestedRelations>;
           where?: Record<string, any>;
           sort?: Record<string, 1 | -1>;

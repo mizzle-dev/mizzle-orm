@@ -174,7 +174,7 @@ export class RelationPipelineBuilder {
       const projection: Record<string, 1 | 0> = {};
 
       // Always include _id unless explicitly excluded
-      if (select._id !== 0) {
+      if (!('_id' in select && select._id === 0)) {
         projection._id = 1;
       }
 
