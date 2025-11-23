@@ -94,7 +94,7 @@ const orders = mongoCollection(
       customer: embed(customers, {
         forward: {
           from: 'customerId',
-          fields: ['name', 'email', 'phone'],
+          projection: { name: 1, email: 1, phone: 1 },
           embedIdField: 'id',
         },
         reverse: {
@@ -133,7 +133,7 @@ const orderItems = mongoCollection(
       product: embed(products, {
         forward: {
           from: 'productId',
-          fields: ['sku', 'name', 'description', 'category', 'imageUrl'],
+          projection: { sku: 1, name: 1, description: 1, category: 1, imageUrl: 1 },
         },
         // NO reverse config - we want the snapshot at purchase time!
       }),
@@ -142,7 +142,7 @@ const orderItems = mongoCollection(
       order: embed(orders, {
         forward: {
           from: 'orderId',
-          fields: ['orderNumber', 'status'],
+          projection: { orderNumber: 1, status: 1 },
         },
         // NO auto-update - preserve order state at item creation
       }),

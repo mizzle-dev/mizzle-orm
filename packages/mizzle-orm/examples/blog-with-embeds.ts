@@ -93,7 +93,7 @@ const posts = mongoCollection(
       author: embed(users, {
         forward: {
           from: 'authorId',
-          fields: ['name', 'avatar', 'bio'],
+          projection: { name: 1, avatar: 1, bio: 1 },
           embedIdField: 'id', // Use publicId instead of _id
         },
         reverse: {
@@ -107,7 +107,7 @@ const posts = mongoCollection(
       category: embed(categories, {
         forward: {
           from: 'categoryId',
-          fields: ['slug', 'title', 'color'],
+          projection: { slug: 1, title: 1, color: 1 },
         },
         reverse: {
           enabled: true,
@@ -119,7 +119,7 @@ const posts = mongoCollection(
       tags: embed(tags, {
         forward: {
           from: 'tagIds',
-          fields: ['name', 'color'],
+          projection: { name: 1, color: 1 },
         },
         reverse: {
           enabled: true,
@@ -150,7 +150,7 @@ const comments = mongoCollection(
       post: embed(posts, {
         forward: {
           from: 'postId',
-          fields: ['title', 'slug'],
+          projection: { title: 1, slug: 1 },
         },
         // No reverse config - we want the snapshot at comment time
       }),
@@ -159,7 +159,7 @@ const comments = mongoCollection(
       author: embed(users, {
         forward: {
           from: 'authorId',
-          fields: ['name', 'avatar'],
+          projection: { name: 1, avatar: 1 },
           embedIdField: 'id',
         },
         reverse: {

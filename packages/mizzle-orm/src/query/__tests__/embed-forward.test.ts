@@ -36,7 +36,7 @@ const posts = mongoCollection(
       author: embed(authors, {
         forward: {
           from: 'authorId',
-          fields: ['name', 'email'],
+          projection: { name: 1, email: 1 },
         },
       }),
     },
@@ -61,7 +61,7 @@ const posts2 = mongoCollection(
       tags: embed(tags, {
         forward: {
           from: 'tagIds',
-          fields: ['name', 'color'],
+          projection: { name: 1, color: 1 },
         },
       }),
     },
@@ -90,7 +90,7 @@ const workflows = mongoCollection(
       directoryEmbed: embed(directories, {
         forward: {
           from: 'directory._id',
-          fields: ['name', 'type'],
+          projection: { name: 1, type: 1 },
         },
       }),
     },
@@ -198,7 +198,7 @@ describe('Forward Embeds - Custom embedIdField', () => {
           author: embed(users, {
             forward: {
               from: 'authorId',
-              fields: ['name', 'email'],
+              projection: { name: 1, email: 1 },
               embedIdField: 'id', // Embed publicId instead of _id
             },
           }),

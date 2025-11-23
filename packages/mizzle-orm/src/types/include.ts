@@ -10,7 +10,7 @@
  * - Using type assertions for extreme edge cases
  */
 
-import type { CollectionDefinition, RelationTargets } from './collection';
+import type { CollectionDefinition, RelationTargets, TypedRelation, RelationType } from './collection';
 import type { InferDocument } from './inference';
 
 /**
@@ -22,16 +22,63 @@ type ExtractTarget<TRelation> = TRelation extends { _targetCollection?: infer T 
   : never;
 
 /**
- * Apply field selection to a document type
- * Supports array syntax: ['name', 'email']
- * For now, projection syntax ({ name: 1, email: 1 }) returns the full document
- * (More sophisticated projection type inference can be added later)
+ * Extract the _id type from a document
  */
-type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Array<infer K>
-  ? K extends keyof TDoc
-    ? Pick<TDoc, K>
-    : TDoc
-  : TDoc; // Projection syntax: return full doc for now
+type ExtractIdType<TDoc> = TDoc extends { _id: infer TId } ? TId : any;
+
+/**
+ * Apply field projection to a document type
+ * Supports MongoDB projection syntax:
+ * - Projection inclusion: { name: 1, email: 1 } - includes fields marked with 1/true
+ * - Projection exclusion: { password: 0 } - all fields except those marked 0/false
+ *
+ * Note: MongoDB always includes _id unless explicitly excluded with _id: 0
+ * Nested paths like 'profile.avatar' work at runtime but have limited type safety
+ */
+type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Record<string, any>
+  ? // MongoDB projection syntax: { name: 1, email: 1, password: 0 }
+    {
+      // Include fields marked with 1 or true
+      [K in keyof TDoc as K extends keyof TSelect
+        ? TSelect[K] extends 0 | false
+          ? never
+          : K
+        : never]: TDoc[K];
+    } & {
+      // Always include _id unless explicitly excluded with _id: 0
+      _id: '_id' extends keyof TSelect
+        ? TSelect['_id'] extends 0 | false
+          ? never
+          : ExtractIdType<TDoc>
+        : ExtractIdType<TDoc>;
+    }
+  : TDoc; // No projection specified: return full document
+
+/**
+ * Extract default projection from a relation definition
+ * Checks both the relation config (from _relConfig phantom type) and the relation itself
+ */
+type ExtractDefaultProjection<TRel> = TRel extends { _relConfig?: infer TConfig }
+  ? TConfig extends { projection?: infer TProj }
+    ? TProj
+    : TRel extends { projection?: infer TProj }
+      ? TProj
+      : never
+  : TRel extends { projection?: infer TProj }
+    ? TProj
+    : never;
+
+/**
+ * Extract only LOOKUP and REFERENCE relation keys (excludes EMBED relations)
+ * Embed relations are already in the document and should not be included via $lookup
+ */
+type IncludableRelationKeys<TRelationTargets extends RelationTargets> = {
+  [K in keyof TRelationTargets]: TRelationTargets[K] extends TypedRelation<infer TRel, any, any>
+    ? TRel extends { type: RelationType.EMBED }
+      ? never  // Exclude EMBED relations
+      : K      // Include LOOKUP and REFERENCE relations
+    : K;       // Include if not a TypedRelation (shouldn't happen)
+}[keyof TRelationTargets];
 
 /**
  * Configuration for nested includes on a related collection
@@ -40,7 +87,7 @@ type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Array<infer K>
 export type NestedIncludeConfig<TTargetOrRelation> =
   ExtractTarget<TTargetOrRelation> extends CollectionDefinition<any, infer TNestedRelations>
     ? {
-        select?: string[] | Record<string, any>; // More permissive - array or any object with field specs
+        projection?: Record<string, any>;
         include?: IncludeConfig<TNestedRelations>;
         where?: Record<string, any>;
         sort?: Record<string, 1 | -1>;
@@ -48,7 +95,7 @@ export type NestedIncludeConfig<TTargetOrRelation> =
       }
     : TTargetOrRelation extends CollectionDefinition<any, infer TNestedRelations>
       ? {
-          select?: string[] | Record<string, any>; // More permissive
+          projection?: Record<string, any>;
           include?: IncludeConfig<TNestedRelations>;
           where?: Record<string, any>;
           sort?: Record<string, 1 | -1>;
@@ -62,18 +109,22 @@ export type NestedIncludeConfig<TTargetOrRelation> =
  * - String: 'authorData' (single relation)
  * - Object: { authorData: true, comments: true }
  * - Nested: { authorData: { include: { organizationData: true } } }
+ *
+ * IMPORTANT: Only LOOKUP and REFERENCE relations can be included.
+ * EMBED relations are already in the document and should use refreshEmbeds instead.
  */
 export type IncludeConfig<TRelationTargets extends RelationTargets> =
-  | (keyof TRelationTargets & string)
+  | (IncludableRelationKeys<TRelationTargets> & string)
   | {
-      [K in keyof TRelationTargets]?:
+      [K in IncludableRelationKeys<TRelationTargets>]?:
         | true
         | NestedIncludeConfig<TRelationTargets[K]>;
     };
 
 /**
  * Add a single populated relation field to a document type
- * Handles both field selection and nested includes
+ * Handles both field projection and nested includes
+ * Applies default projection from relation definition when config is `true`
  */
 type AddPopulatedField<
   TDoc,
@@ -84,17 +135,24 @@ type AddPopulatedField<
   ? TDoc & {
       [K in TRelationName]: (
         TConfig extends true
-          ? InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
-          : TConfig extends { include: any; select: any }
+          ? // Check if relation has a default projection
+            ExtractDefaultProjection<TRelation> extends infer TDefaultProj
+            ? [TDefaultProj] extends [never]
+              ? // No default projection, return full document
+                InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+              : // Apply default projection
+                ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TDefaultProj> | null
+            : InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+          : TConfig extends { include: any; projection: any }
             ? WithIncluded<
-                ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['select']>,
+                ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['projection']>,
                 TConfig['include'],
                 TNestedRelations
               >
             : TConfig extends { include: any }
               ? WithIncluded<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['include'], TNestedRelations>
-              : TConfig extends { select: any }
-                ? ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['select']>
+              : TConfig extends { projection: any }
+                ? ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['projection']>
                 : InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
       );
     }

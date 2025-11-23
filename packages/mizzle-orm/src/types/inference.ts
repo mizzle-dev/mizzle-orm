@@ -39,6 +39,7 @@ type IsArrayField<TField> = TField extends { _item: any }
 /**
  * Helper to extract the 'from' path from embed config
  * Uses index access to preserve literal types
+ * The config comes from the _relConfig phantom type (where literal types are preserved)
  */
 type ExtractFromPath<TConfig> = TConfig extends { forward: { from: infer TFrom } }
   ? TFrom
@@ -63,10 +64,54 @@ type InferEmbedCardinality<
       : 'unknown'; // Can't determine
 
 /**
- * Helper to create embedded document type
+ * Extract projection configuration from embed config
+ * The config comes from the _relConfig phantom type (where literal types are preserved)
  */
-type EmbeddedDocType<TTarget> = TTarget extends CollectionDefinition<any, any>
-  ? Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+type ExtractEmbedProjection<TConfig> = TConfig extends { forward: { projection: infer TProj } }
+  ? TProj
+  : TConfig extends { forward?: { projection?: infer TProj } }
+    ? TProj
+    : never;
+
+/**
+ * Apply field projection to embedded document type
+ * Similar to ApplyFieldSelection but always converts _id to string
+ */
+type ApplyEmbedFieldProjection<TDoc, TProj> = TProj extends Record<string, any>
+  ? // Projection syntax: { name: 1, email: 1 }
+    {
+      [K in keyof TDoc as K extends keyof TProj
+        ? TProj[K] extends 0 | false
+          ? never
+          : K
+        : never]: TDoc[K];
+    } & {
+      _id: '_id' extends keyof TProj
+        ? TProj['_id'] extends 0 | false
+          ? never
+          : string
+        : string;
+    }
+  : Partial<Omit<TDoc, '_id'>> & { _id: string };
+
+/**
+ * Helper to create embedded document type with field projection
+ * @template TTarget - The target collection definition
+ * @template TRel - The embed relation (runtime type)
+ * @template TConfig - The embed config (from _relConfig phantom type) containing projection
+ */
+type EmbeddedDocType<TTarget, TRel = never, TConfig = never> = TTarget extends CollectionDefinition<any, any>
+  ? [TRel] extends [never]
+    ? // No relation config provided, return all fields
+      Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+    : // Apply field projection from config
+      ExtractEmbedProjection<TConfig> extends infer TProj
+      ? [TProj] extends [never]
+        ? // No projection specified, return all fields
+          Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+        : // Apply field projection
+          ApplyEmbedFieldProjection<InferDocument<TTarget>, TProj>
+      : never
   : never;
 
 /**
@@ -91,31 +136,50 @@ type EmbedRelationKeys<TRelationTargets> = {
  * Now correctly infers single vs array based on source field type
  *
  * IMPORTANT: Only includes EMBED relations, not LOOKUP or REFERENCE.
+ * IMPORTANT: Excludes inplace embeds (where relation name matches schema field name).
+ * Inplace embeds use the schema field type directly.
  * LOOKUP relations are added dynamically via WithIncluded when using include option.
  */
 type InferEmbeddedFields<T> = T extends CollectionDefinition<infer TSchema, infer TRelationTargets>
   ? {
-      [K in EmbedRelationKeys<TRelationTargets>]?: TRelationTargets[K] extends TypedRelation<
+      [K in EmbedRelationKeys<TRelationTargets> as K extends keyof TSchema
+        ? never
+        : K]?: TRelationTargets[K] extends TypedRelation<
         infer TRel,
         infer TTarget,
         infer TConfig
       >
         ? TRel extends { type: RelationType.EMBED }
           ? InferEmbedCardinality<TSchema, TConfig> extends 'many'
-            ? Array<EmbeddedDocType<TTarget>> // Array embed
+            ? Array<EmbeddedDocType<TTarget, TRel, TConfig>> // Array embed with field selection
             : InferEmbedCardinality<TSchema, TConfig> extends 'one'
-              ? EmbeddedDocType<TTarget> // Single embed
-              : EmbeddedDocType<TTarget> | Array<EmbeddedDocType<TTarget>> // Unknown, return union
+              ? EmbeddedDocType<TTarget, TRel, TConfig> // Single embed with field selection
+              : EmbeddedDocType<TTarget, TRel, TConfig> | Array<EmbeddedDocType<TTarget, TRel, TConfig>> // Unknown, return union
           : never
         : never;
     }
   : {};
 
 /**
+ * Helper to get schema-only document type (without embedded fields)
+ * This is used internally for building InferInsert
+ */
+type InferSchemaDocument<T> = '_id' extends keyof ExtractSchemaOrUse<T>
+  ? {
+      [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
+    }
+  : {
+      _id: ObjectId;
+    } & {
+      [K in keyof ExtractSchemaOrUse<T>]: InferFieldType<ExtractSchemaOrUse<T>[K]>;
+    };
+
+/**
  * Infer the full document type from a schema definition or collection definition
  * This represents what you get when reading from the database
  * MongoDB always adds _id: ObjectId to every document (unless explicitly defined in schema)
- * EMBED relations add optional embedded fields
+ * EMBED relations with separate fields add optional embedded fields
+ * Inplace embeds (where relation name matches schema field) use the schema field type
  */
 export type InferDocument<T> = ('_id' extends keyof ExtractSchemaOrUse<T>
   ? // If _id is explicitly defined in schema, use that type
@@ -196,9 +260,10 @@ type OptionalInsertFields<T> = {
 /**
  * Infer the insert type from a schema definition or collection definition
  * This represents what you pass when creating a new document
+ * Embed fields are excluded since they're auto-computed from other collections
  */
-export type InferInsert<T> = Pick<InferDocument<T>, RequiredInsertFields<T>> &
-  Partial<Pick<InferDocument<T>, OptionalInsertFields<T>>>;
+export type InferInsert<T> = Pick<InferSchemaDocument<T>, RequiredInsertFields<T>> &
+  Partial<Pick<InferSchemaDocument<T>, OptionalInsertFields<T>>>;
 
 /**
  * Helper to get embedded field keys from a document type

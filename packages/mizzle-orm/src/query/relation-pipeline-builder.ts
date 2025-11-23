@@ -3,7 +3,7 @@
  */
 
 import type { Document } from 'mongodb';
-import type { CollectionDefinition, RelationTargets, AnyRelation, LookupRelation, FieldSelection } from '../types/collection';
+import type { CollectionDefinition, RelationTargets, AnyRelation, LookupRelation, FieldProjection } from '../types/collection';
 import type { IncludeConfig, NestedIncludeConfig } from '../types/include';
 
 /**
@@ -84,10 +84,10 @@ export class RelationPipelineBuilder {
         pipeline.push({ $limit: limitValue });
       }
 
-      // STEP 4: Field selection (query-time replaces default)
-      const selectFields = queryConfig?.select ?? lookupRelation.select;
-      if (selectFields) {
-        const projection = this.buildProjection(selectFields);
+      // STEP 4: Field projection (query-time replaces default)
+      const projectionFields = queryConfig?.projection ?? lookupRelation.projection;
+      if (projectionFields) {
+        const projection = this.buildProjection(projectionFields);
         pipeline.push({ $project: projection });
       }
 
@@ -158,33 +158,23 @@ export class RelationPipelineBuilder {
 
 
   /**
-   * Build MongoDB projection from FieldSelection
-   * Handles both array syntax and MongoDB projection syntax
+   * Build MongoDB projection from field projection config
+   * Uses MongoDB projection syntax: { name: 1, email: 1, password: 0 }
    */
-  private static buildProjection(select: FieldSelection): Record<string, 1 | 0> {
-    if (Array.isArray(select)) {
-      // Array syntax: ['name', 'email', 'profile.avatar']
-      const projection: Record<string, 1> = { _id: 1 }; // Always include _id
-      for (const field of select) {
-        projection[field] = 1;
-      }
-      return projection;
-    } else {
-      // MongoDB projection syntax: { name: 1, email: 1, password: 0 }
-      const projection: Record<string, 1 | 0> = {};
+  private static buildProjection(projection: FieldProjection): Record<string, 1 | 0> {
+    const result: Record<string, 1 | 0> = {};
 
-      // Always include _id unless explicitly excluded
-      if (select._id !== 0) {
-        projection._id = 1;
-      }
-
-      // Copy all field specifications
-      for (const [field, include] of Object.entries(select)) {
-        projection[field] = include;
-      }
-
-      return projection;
+    // Always include _id unless explicitly excluded
+    if (!('_id' in projection && projection._id === 0)) {
+      result._id = 1;
     }
+
+    // Copy all field specifications
+    for (const [field, include] of Object.entries(projection)) {
+      result[field] = include as 1 | 0;
+    }
+
+    return result;
   }
 
   /**

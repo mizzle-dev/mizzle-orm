@@ -14,6 +14,7 @@ describe('Type Inference', () => {
   // Organizations
   const organizations = mongoCollection('test_orgs_ti', {
     name: string(),
+    type: string().optional(),
   });
 
   // Users with organization relation
@@ -30,6 +31,9 @@ describe('Type Inference', () => {
           localField: 'organizationId',
           foreignField: '_id',
           one: true,
+          projection: {
+            name: 1,
+          }
         }),
       },
     }
@@ -191,5 +195,195 @@ describe('Type Inference', () => {
 
     expect(isAny).toBe(false);
     console.log(isAnyWrong);
+  });
+
+  it('should properly narrow types when using projection syntax', async () => {
+    // Create test data
+    const org = await db().organizations.create({ name: 'Test Org' });
+    const user = await db().users.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      organizationId: org._id,
+    });
+    await db().posts.create({
+      title: 'Test Post',
+      authorId: user._id,
+    });
+
+    // Fetch with projection limiting fields
+    const posts = await db().posts.findMany({}, {
+      include: {
+        author: {
+          projection: { name: 1, email: 1 }, // Only include name and email
+        },
+      },
+    });
+
+    const post = posts[0];
+    expect(post).toBeDefined();
+
+    if (post?.author) {
+      // These fields SHOULD be accessible (projected + _id)
+      const name: string = post.author.name;
+      const email: string = post.author.email;
+      const id = post.author._id; // _id is always included
+
+      // These fields should NOT be accessible (not projected)
+      // @ts-expect-error - organizationId was not projected
+      const orgId = post.author.organizationId;
+
+      // Runtime assertions
+      expect(name).toBe('Test User');
+      expect(email).toBe('test@example.com');
+      expect(id).toBeDefined();
+
+      // Silence unused variable warnings
+      console.log(orgId);
+    }
+  });
+
+  it('should handle nested projections with proper type narrowing', async () => {
+    // Create test data
+    const org = await db().organizations.create({ name: 'Test Org' });
+    const user = await db().users.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      organizationId: org._id,
+    });
+    await db().posts.create({
+      title: 'Test Post',
+      authorId: user._id,
+    });
+
+    // Fetch with nested projection
+    const posts = await db().posts.findMany({}, {
+      include: {
+        author: {
+          projection: { name: 1, organizationId: 1 }, // Include organizationId for nested include
+          include: {
+            organization: {
+              projection: { name: 1 }, // Only include name from organization
+            },
+          },
+        },
+      },
+    });
+
+    const post = posts[0];
+    expect(post).toBeDefined();
+
+    if (post?.author?.organization) {
+      // Organization should only have _id and name
+      const orgName: string = post.author.organization.name;
+      const orgId = post.author.organization._id; // _id always included
+
+      // These fields should NOT be accessible
+      // Note: We can't use @ts-expect-error here because organizations only has 'name' field
+
+      // Runtime assertions
+      expect(orgName).toBe('Test Org');
+      expect(orgId).toBeDefined();
+    }
+
+    // Author should only have name, organizationId, and _id
+    if (post?.author) {
+      const authorName: string = post.author.name;
+      const authorOrgId = post.author.organizationId;
+
+      // @ts-expect-error - email was not projected
+      const email = post.author.email;
+
+      expect(authorName).toBe('Test User');
+      expect(authorOrgId).toBeDefined();
+
+      // Silence unused variable warnings
+      console.log(email);
+    }
+  });
+
+  it('should support MongoDB projection syntax', async () => {
+    // Create test data
+    const org = await db().organizations.create({ name: 'Test Org' });
+    const user = await db().users.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      organizationId: org._id,
+    });
+    await db().posts.create({
+      title: 'Test Post',
+      authorId: user._id,
+    });
+
+    // Fetch with projection syntax (include specific fields)
+    const posts = await db().posts.findMany({}, {
+      include: {
+        author: {
+          projection: {
+            name: 1,
+            email: 1,
+          },
+        },
+      },
+    });
+
+    const post = posts[0];
+    expect(post).toBeDefined();
+
+    if (post?.author) {
+      // These fields SHOULD be accessible
+      const name: string = post.author.name;
+      const email: string = post.author.email;
+      const id = post.author._id; // _id always included
+
+      // This field should NOT be accessible
+      // @ts-expect-error - organizationId was not projected
+      const orgId = post.author.organizationId;
+
+      // Runtime assertions
+      expect(name).toBe('Test User');
+      expect(email).toBe('test@example.com');
+      expect(id).toBeDefined();
+
+      // Silence unused variable warnings
+      console.log(orgId);
+    }
+  });
+
+  it('should apply default projection from relation definition when using include: true', async () => {
+    // Create test data
+    const org = await db().organizations.create({ name: 'Test Org', type: 'Business' });
+    await db().users.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      organizationId: org._id,
+    });
+
+    // The users collection has a default projection on the organization relation
+    // projection: { name: 1 } - so only name and _id should be available
+    const users = await db().users.findMany({}, {
+      include: {
+        organization: true, // Using true should apply default projection
+      },
+    });
+
+    const user = users[0];
+    expect(user).toBeDefined();
+
+    if (user?.organization) {
+      // These fields SHOULD be accessible (in default projection + _id)
+      const orgName: string = user.organization.name;
+      const orgId = user.organization._id; // _id always included
+
+      // This field should NOT be accessible (not in default projection)
+      // @ts-expect-error - type was not in default projection
+      const orgType = user.organization.type;
+
+      // Runtime assertions
+      expect(orgName).toBe('Test Org');
+      expect(orgId).toBeDefined();
+
+      // Silence unused variable warnings
+      console.log(orgType);
+    }
   });
 });
