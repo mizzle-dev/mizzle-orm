@@ -286,7 +286,7 @@ export class RelationHelper<TDoc extends Document> {
     const embedMap = new Map<string, Document>();
 
     for (const sourceDoc of sourceDocs) {
-      const embedded = this.extractFields(sourceDoc, config.fields, embedIdField);
+      const embedded = this.extractFields(sourceDoc, config.projection, embedIdField);
       // Map by the lookup field value (converted to string)
       const lookupValue = sourceDoc[lookupField];
       const sourceId =
@@ -306,45 +306,39 @@ export class RelationHelper<TDoc extends Document> {
   }
 
   /**
-   * Extract specified fields from document
+   * Extract specified fields from document using MongoDB projection syntax
    * ALWAYS includes the ID field from embedIdField config
+   * If no projection is provided, returns all fields
    */
   private extractFields(
     doc: Document,
-    fields: string[] | readonly string[] | Record<string, 1 | 0>,
+    projection: Record<string, 1 | 0> | undefined,
     embedIdField: string = '_id',
   ): Document {
-    if (Array.isArray(fields)) {
-      const result: Document = {};
+    const result: Document = {};
 
-      // Always include the ID field first (convert to string)
-      if (embedIdField in doc) {
-        const idValue = doc[embedIdField];
-        result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
-      }
+    // Always include the ID field unless explicitly excluded (convert to string)
+    if ((!projection || !('_id' in projection && projection._id === 0)) && embedIdField in doc) {
+      const idValue = doc[embedIdField];
+      result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
+    }
 
-      for (const field of fields) {
-        if (field in doc && field !== embedIdField) {
-          result[field] = doc[field];
-        }
-      }
-      return result;
-    } else {
-      // Projection syntax
-      const result: Document = {};
-
-      // Always include the ID field unless explicitly excluded (convert to string)
-      if (!('_id' in fields && fields._id === 0) && embedIdField in doc) {
-        const idValue = doc[embedIdField];
-        result._id = idValue instanceof MongoObjectId ? idValue.toHexString() : String(idValue);
-      }
-
-      for (const [field, include] of Object.entries(fields)) {
-        if (include === 1 && field in doc && field !== embedIdField) {
-          result[field] = doc[field];
+    // If no projection specified, return all fields
+    if (!projection) {
+      for (const [field, value] of Object.entries(doc)) {
+        if (field !== embedIdField) {
+          result[field] = value;
         }
       }
       return result;
     }
+
+    // Apply projection
+    for (const [field, include] of Object.entries(projection)) {
+      if (include === 1 && field in doc && field !== embedIdField) {
+        result[field] = doc[field];
+      }
+    }
+    return result;
   }
 }

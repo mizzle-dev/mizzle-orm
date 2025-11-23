@@ -193,7 +193,7 @@ describe('Type Inference', () => {
     console.log(isAnyWrong);
   });
 
-  it('should properly narrow types when using select with array syntax', async () => {
+  it('should properly narrow types when using projection syntax', async () => {
     // Create test data
     const org = await db().organizations.create({ name: 'Test Org' });
     const user = await db().users.create({
@@ -206,11 +206,11 @@ describe('Type Inference', () => {
       authorId: user._id,
     });
 
-    // Fetch with select limiting fields
+    // Fetch with projection limiting fields
     const posts = await db().posts.findMany({}, {
       include: {
         author: {
-          select: ['name', 'email'], // Only select name and email
+          projection: { name: 1, email: 1 }, // Only include name and email
         },
       },
     });
@@ -219,13 +219,13 @@ describe('Type Inference', () => {
     expect(post).toBeDefined();
 
     if (post?.author) {
-      // These fields SHOULD be accessible (selected + _id)
+      // These fields SHOULD be accessible (projected + _id)
       const name: string = post.author.name;
       const email: string = post.author.email;
       const id = post.author._id; // _id is always included
 
-      // These fields should NOT be accessible (not selected)
-      // @ts-expect-error - organizationId was not selected
+      // These fields should NOT be accessible (not projected)
+      // @ts-expect-error - organizationId was not projected
       const orgId = post.author.organizationId;
 
       // Runtime assertions
@@ -238,7 +238,7 @@ describe('Type Inference', () => {
     }
   });
 
-  it('should handle nested selects with proper type narrowing', async () => {
+  it('should handle nested projections with proper type narrowing', async () => {
     // Create test data
     const org = await db().organizations.create({ name: 'Test Org' });
     const user = await db().users.create({
@@ -251,14 +251,14 @@ describe('Type Inference', () => {
       authorId: user._id,
     });
 
-    // Fetch with nested select
+    // Fetch with nested projection
     const posts = await db().posts.findMany({}, {
       include: {
         author: {
-          select: ['name', 'organizationId'], // Include organizationId for nested include
+          projection: { name: 1, organizationId: 1 }, // Include organizationId for nested include
           include: {
             organization: {
-              select: ['name'], // Only select name from organization
+              projection: { name: 1 }, // Only include name from organization
             },
           },
         },
@@ -286,7 +286,7 @@ describe('Type Inference', () => {
       const authorName: string = post.author.name;
       const authorOrgId = post.author.organizationId;
 
-      // @ts-expect-error - email was not selected
+      // @ts-expect-error - email was not projected
       const email = post.author.email;
 
       expect(authorName).toBe('Test User');
@@ -297,7 +297,7 @@ describe('Type Inference', () => {
     }
   });
 
-  it('should support MongoDB projection syntax for select', async () => {
+  it('should support MongoDB projection syntax', async () => {
     // Create test data
     const org = await db().organizations.create({ name: 'Test Org' });
     const user = await db().users.create({
@@ -314,7 +314,7 @@ describe('Type Inference', () => {
     const posts = await db().posts.findMany({}, {
       include: {
         author: {
-          select: {
+          projection: {
             name: 1,
             email: 1,
           },
@@ -332,7 +332,7 @@ describe('Type Inference', () => {
       const id = post.author._id; // _id always included
 
       // This field should NOT be accessible
-      // @ts-expect-error - organizationId was not selected
+      // @ts-expect-error - organizationId was not projected
       const orgId = post.author.organizationId;
 
       // Runtime assertions

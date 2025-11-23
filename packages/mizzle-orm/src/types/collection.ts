@@ -89,10 +89,10 @@ export interface ReverseEmbedConfig {
 }
 
 /**
- * Field selection type
- * Supports both array syntax and MongoDB projection syntax
+ * Field projection type
+ * Supports MongoDB projection syntax for inclusion/exclusion
  */
-export type FieldSelection = string[] | readonly string[] | Record<string, 1 | 0>;
+export type FieldProjection = Record<string, 1 | 0>;
 
 /**
  * Forward embed configuration
@@ -100,8 +100,13 @@ export type FieldSelection = string[] | readonly string[] | Record<string, 1 | 0
  *
  * @template TFrom - The literal type of the 'from' field path
  * @template TPaths - The literal type of the 'paths' array
+ * @template TTargetDoc - The target document type (for constraining fields)
  */
-export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
+export interface ForwardEmbedConfig<
+  TFrom extends string = string,
+  TPaths extends readonly string[] = string[],
+  TTargetDoc = any
+> {
   // ==== ID Location (Required - one or the other) ====
 
   // Simple: single field or path
@@ -116,8 +121,10 @@ export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extend
   // Examples:
   // - ['workflow.required[].ref._id', 'workflow.optional[].ref._id']
 
-  // ==== Fields to Embed (Required) ====
-  fields: FieldSelection;
+  // ==== Fields to Embed (Optional) ====
+  projection?: TTargetDoc extends { [key: string]: any }
+    ? Record<string, 1 | 0>
+    : FieldProjection;
 
   // ==== ID Field Configuration ====
   embedIdField?: string; // Default: '_id'
@@ -136,10 +143,18 @@ export interface ForwardEmbedConfig<TFrom extends string = string, TPaths extend
  * Complete embed configuration type for the embed() function
  * Combines forward and reverse config with delete handling
  * Generic to preserve literal types for autocomplete and type safety
+ *
+ * @template TFrom - The literal type of the 'from' field path
+ * @template TPaths - The literal type of the 'paths' array
+ * @template TTargetDoc - The target document type (for constraining fields)
  */
-export interface EmbedConfig<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
+export interface EmbedConfig<
+  TFrom extends string = string,
+  TPaths extends readonly string[] = string[],
+  TTargetDoc = any
+> {
   // Forward embed (required)
-  forward?: ForwardEmbedConfig<TFrom, TPaths>;
+  forward?: ForwardEmbedConfig<TFrom, TPaths, TTargetDoc>;
 
   // Reverse embed (optional - auto-updates)
   reverse?: ReverseEmbedConfig;
@@ -154,13 +169,21 @@ export interface EmbedConfig<TFrom extends string = string, TPaths extends reado
 /**
  * Embed relation configuration (write-time denormalization)
  * Generic to preserve literal types from ForwardEmbedConfig
+ *
+ * @template TFrom - The literal type of the 'from' field path
+ * @template TPaths - The literal type of the 'paths' array
+ * @template TTargetDoc - The target document type (for constraining fields)
  */
-export interface EmbedRelation<TFrom extends string = string, TPaths extends readonly string[] = string[]> {
+export interface EmbedRelation<
+  TFrom extends string = string,
+  TPaths extends readonly string[] = string[],
+  TTargetDoc = any
+> {
   type: RelationType.EMBED;
   sourceCollection: string;
 
   // New forward embed config
-  forward?: ForwardEmbedConfig<TFrom, TPaths>;
+  forward?: ForwardEmbedConfig<TFrom, TPaths, TTargetDoc>;
 
   // Legacy support (for backwards compatibility during migration)
   strategy?: 'denormalized';
@@ -168,7 +191,7 @@ export interface EmbedRelation<TFrom extends string = string, TPaths extends rea
   applyEmbeds?: (doc: Document, embeds: Document[]) => Document;
 
   // Default query options (can be overridden at query time)
-  select?: FieldSelection; // Default fields to include
+  projection?: FieldProjection; // Default fields to include
   where?: any; // Default filter (ANDed with query-time filter)
   sort?: Record<string, 1 | -1>; // Default sort order
   limit?: number; // Default limit
@@ -190,7 +213,7 @@ export interface LookupRelation {
   pipeline?: Document[];
 
   // Default query options (can be overridden at query time)
-  select?: FieldSelection; // Default fields to include
+  projection?: FieldProjection; // Default fields to include
   where?: any; // Default filter (ANDed with query-time filter)
   sort?: Record<string, 1 | -1>; // Default sort order
   limit?: number; // Default limit

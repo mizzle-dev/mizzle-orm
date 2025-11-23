@@ -63,10 +63,52 @@ type InferEmbedCardinality<
       : 'unknown'; // Can't determine
 
 /**
- * Helper to create embedded document type
+ * Extract projection configuration from embed relation
  */
-type EmbeddedDocType<TTarget> = TTarget extends CollectionDefinition<any, any>
-  ? Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+type ExtractEmbedProjection<TRel> = TRel extends { forward: { projection: infer TProj } }
+  ? TProj
+  : TRel extends { forward?: { projection?: infer TProj } }
+    ? TProj
+    : never;
+
+/**
+ * Apply field projection to embedded document type
+ * Similar to ApplyFieldSelection but always converts _id to string
+ */
+type ApplyEmbedFieldProjection<TDoc, TProj> = TProj extends Record<string, any>
+  ? // Projection syntax: { name: 1, email: 1 }
+    {
+      [K in keyof TDoc as K extends keyof TProj
+        ? TProj[K] extends 0 | false
+          ? never
+          : K
+        : never]: TDoc[K];
+    } & {
+      _id: '_id' extends keyof TProj
+        ? TProj['_id'] extends 0 | false
+          ? never
+          : string
+        : string;
+    }
+  : Partial<Omit<TDoc, '_id'>> & { _id: string };
+
+/**
+ * Helper to create embedded document type with field projection
+ * @template TTarget - The target collection definition
+ * @template TRel - The embed relation config containing projection
+ */
+type EmbeddedDocType<TTarget, TRel = never> = TTarget extends CollectionDefinition<any, any>
+  ? [TRel] extends [never]
+    ? // No relation config provided, return all fields
+      Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+    : // Apply field projection from relation config
+      ExtractEmbedProjection<TRel> extends infer TProj
+      ? [TProj] extends [never]
+        ? // No projection specified, return all fields
+          Partial<Omit<InferDocument<TTarget>, '_id'>> & { _id: string }
+        : // Apply field projection
+          ApplyEmbedFieldProjection<InferDocument<TTarget>, TProj>
+      : never
   : never;
 
 /**
@@ -102,10 +144,10 @@ type InferEmbeddedFields<T> = T extends CollectionDefinition<infer TSchema, infe
       >
         ? TRel extends { type: RelationType.EMBED }
           ? InferEmbedCardinality<TSchema, TConfig> extends 'many'
-            ? Array<EmbeddedDocType<TTarget>> // Array embed
+            ? Array<EmbeddedDocType<TTarget, TRel>> // Array embed with field selection
             : InferEmbedCardinality<TSchema, TConfig> extends 'one'
-              ? EmbeddedDocType<TTarget> // Single embed
-              : EmbeddedDocType<TTarget> | Array<EmbeddedDocType<TTarget>> // Unknown, return union
+              ? EmbeddedDocType<TTarget, TRel> // Single embed with field selection
+              : EmbeddedDocType<TTarget, TRel> | Array<EmbeddedDocType<TTarget, TRel>> // Unknown, return union
           : never
         : never;
     }

@@ -13,6 +13,7 @@ import type {
 } from '../types/collection';
 import { RelationType } from '../types/collection';
 import type { SchemaDefinition } from '../types/field';
+import type { InferDocument } from '../types/inference';
 
 /**
  * Define a REFERENCE relation - validates foreign key exists
@@ -135,7 +136,7 @@ export function lookup<TOther extends SchemaDefinition, TTargets extends Relatio
  * Helper to check for excess properties in embed config
  * Returns an error type if invalid keys are found
  */
-type ValidateEmbedConfig<T> = T extends EmbedConfig
+type ValidateEmbedConfig<T, TTargetDoc> = T extends EmbedConfig<any, any, TTargetDoc>
   ? Exclude<keyof T, keyof EmbedConfig> extends never
     ? T
     : { error: 'Invalid property in embed config'; invalidKeys: Exclude<keyof T, keyof EmbedConfig> }
@@ -144,11 +145,11 @@ type ValidateEmbedConfig<T> = T extends EmbedConfig
 export function embed<
   TOther extends SchemaDefinition,
   TTargets extends RelationTargets,
-  const TConfig extends EmbedConfig, // const forces literal type preservation, extends provides autocomplete
+  const TConfig extends EmbedConfig<string, readonly string[], InferDocument<CollectionDefinition<TOther, TTargets>>>, // const forces literal type preservation
 >(
   sourceCollection: CollectionDefinition<TOther, TTargets>,
-  config: TConfig & ValidateEmbedConfig<TConfig>,
-): TypedRelation<EmbedRelation<any, any>, CollectionDefinition<TOther, TTargets>, TConfig> {
+  config: TConfig & ValidateEmbedConfig<TConfig, InferDocument<CollectionDefinition<TOther, TTargets>>>,
+): TypedRelation<EmbedRelation<string, readonly string[], InferDocument<CollectionDefinition<TOther, TTargets>>>, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.EMBED,
     sourceCollection: sourceCollection._meta.name,

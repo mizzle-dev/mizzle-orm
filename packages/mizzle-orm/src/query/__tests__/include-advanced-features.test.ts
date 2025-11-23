@@ -71,8 +71,8 @@ describe('Advanced Include Features', () => {
         localField: 'organizationId',
         foreignField: '_id',
         one: true,
-        select: ['name', 'website'], // Default select
-        where: { active: true },      // Default where
+        projection: { name: 1, website: 1 }, // Default projection
+        where: { active: true },              // Default where
       }),
     },
   });
@@ -315,12 +315,12 @@ describe('Advanced Include Features', () => {
   // ============================================================
 
   describe('Field Selection', () => {
-    it('should support array syntax for field selection', async () => {
+    it('should support projection syntax for field selection', async () => {
 
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: ['name', 'email'],
+            projection: { name: 1, email: 1 },
           },
         },
       });
@@ -335,12 +335,12 @@ describe('Advanced Include Features', () => {
       expect((post.author as any)?.password).toBeUndefined();
     });
 
-    it('should support nested field paths in array syntax', async () => {
+    it('should support nested field paths in projection syntax', async () => {
 
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: ['name', 'profile.avatar'],
+            projection: { name: 1, 'profile.avatar': 1 },
           },
         },
       });
@@ -357,7 +357,7 @@ describe('Advanced Include Features', () => {
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: {
+            projection: {
               name: 1,
               email: 1,
             },
@@ -373,15 +373,15 @@ describe('Advanced Include Features', () => {
       expect((post.author as any)?.password).toBeUndefined();
     });
 
-    it('should combine field selection with nested includes', async () => {
+    it('should combine field projection with nested includes', async () => {
 
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: ['name', 'email', 'organizationId'],
+            projection: { name: 1, email: 1, organizationId: 1 },
             include: {
               organization: {
-                select: ['name'],
+                projection: { name: 1 },
               },
             },
           },
@@ -473,17 +473,17 @@ describe('Advanced Include Features', () => {
       }
     });
 
-    it('should combine all options: select + where + sort + limit + nested includes', async () => {
+    it('should combine all options: projection + where + sort + limit + nested includes', async () => {
 
       const posts = await db().posts.findMany({}, {
         include: {
           author: {
-            select: ['name', 'email', 'role', 'active', 'organizationId'],
+            projection: { name: 1, email: 1, role: 1, active: 1, organizationId: 1 },
             where: { active: true },
             sort: { name: 1 },
             include: {
               organization: {
-                select: ['name', 'website'],
+                projection: { name: 1, website: 1 },
               },
             },
           },
@@ -519,10 +519,10 @@ describe('Advanced Include Features', () => {
       expect(users.length).toBeGreaterThan(0);
       const user = users[0];
       if (user.organization) {
-        // Default select: ['name', 'website']
+        // Default projection: { name: 1, website: 1 }
         expect(user.organization.name).toBeDefined();
         expect((user.organization as any).website).toBeDefined();
-        // employeeCount not in default select
+        // employeeCount not in default projection
         expect((user.organization as any).employeeCount).toBeUndefined();
       }
     });
@@ -549,12 +549,12 @@ describe('Advanced Include Features', () => {
       }
     });
 
-    it('should override default select with query-time select', async () => {
+    it('should override default projection with query-time projection', async () => {
 
       const users = await db().users.findMany({}, {
         include: {
           organization: {
-            select: ['name', 'employeeCount'], // Override default
+            projection: { name: 1, employeeCount: 1 }, // Override default
           },
         },
       });
