@@ -27,7 +27,7 @@ pnpm add mizzle-orm mongodb
 ```
 
 ```typescript
-import { createMongoOrm, mongoCollection, objectId, publicId, string, date } from 'mizzle-orm';
+import { mizzle, defineSchema, mongoCollection, objectId, publicId, string, date } from 'mizzle-orm';
 
 // Define your schema
 const users = mongoCollection(
@@ -48,19 +48,17 @@ const users = mongoCollection(
   },
 );
 
+const schema = defineSchema({ users });
+
 // Create ORM instance
-const orm = await createMongoOrm({
+const db = await mizzle({
   uri: process.env.MONGO_URI!,
   dbName: 'myapp',
-  collections: [users],
+  schema,
 });
 
-// Use with context!
-const ctx = orm.createContext({ user, tenantId });
-const db = orm.withContext(ctx);
-
 // Create
-const alice = await db.users.create({
+const alice = await db({ user, tenantId }).users.create({
   email: 'alice@example.com',
   displayName: 'Alice Smith',
   role: 'user',
@@ -68,21 +66,21 @@ const alice = await db.users.create({
 console.log(alice.id); // 'user_V1StGXR8_Z5jdHi6B-myT'
 
 // Read
-const user = await db.users.findById(alice.id); // Works with public ID
-const byEmail = await db.users.findOne({ email: 'alice@example.com' });
-const allUsers = await db.users.findMany({ role: 'user' }, { limit: 10 });
+const user = await db().users.findById(alice.id); // Works with public ID
+const byEmail = await db().users.findOne({ email: 'alice@example.com' });
+const allUsers = await db().users.findMany({ role: 'user' }, { limit: 10 });
 
 // Update
-await db.users.updateById(alice.id, {
+await db().users.updateById(alice.id, {
   displayName: 'Alice M. Smith',
 });
 
 // Soft delete
-await db.users.softDelete(alice.id);
-await db.users.restore(alice.id);
+await db().users.softDelete(alice.id);
+await db().users.restore(alice.id);
 
 // Delete
-await db.users.deleteById(alice.id);
+await db().users.deleteById(alice.id);
 ```
 
 ## Features

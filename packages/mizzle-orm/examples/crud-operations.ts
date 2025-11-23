@@ -3,8 +3,8 @@
  */
 
 import {
-  createMongoOrm,
-  defineCollections,
+  mizzle,
+  defineSchema,
   mongoCollection,
   objectId,
   publicId,
@@ -94,32 +94,35 @@ async function main() {
   const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
 
   // Create ORM instance
-  const collections = defineCollections({ users, projects });
-  const orm = await createMongoOrm({
+  const schema = defineSchema({
+    users,
+    projects,
+  });
+
+  const db = await mizzle({
     uri: MONGO_URI,
     dbName: 'mizzle_example',
-    collections,
+    schema,
   });
 
   console.log('✓ Connected to MongoDB');
 
   // Create a context (typically per-request in a web app)
-  const ctx = orm.createContext({
+  const ctx = {
     user: {
       id: 'user_admin123',
       email: 'admin@example.com',
       roles: ['admin'],
     },
     tenantId: '507f1f77bcf86cd799439011', // Example ObjectId
-  });
-
-  // Get context-bound database facade
-  const db = orm.withContext(ctx);
+    tenantIdObjectId: new (await import('mongodb')).ObjectId('507f1f77bcf86cd799439011'),
+    requestId: 'req_123',
+  };
 
   // ========== CREATE ==========
   console.log('\n--- CREATE ---');
 
-  const alice = await db.users.create({
+  const alice = await db().users.create({
     // TypeScript note: id, _id, createdAt, updatedAt, deletedAt, isActive, role
     // are automatically generated or have defaults, so they're optional here
     orgId: ctx.tenantIdObjectId!,
@@ -129,7 +132,7 @@ async function main() {
   });
   console.log('Created user:', alice.id, alice.email);
 
-  const bob = await db.users.create({
+  const bob = await db().users.create({
     orgId: ctx.tenantIdObjectId!,
     email: 'bob@example.com',
     displayName: 'Bob Johnson',
@@ -141,32 +144,32 @@ async function main() {
   console.log('\n--- READ ---');
 
   // Find by public ID
-  const foundAlice = await db.users.findById(alice.id);
+  const foundAlice = await db().users.findById(alice.id);
   console.log('Found by public ID:', foundAlice?.displayName);
 
   // Find by MongoDB _id
-  const foundBob = await db.users.findById(bob._id);
+  const foundBob = await db().users.findById(bob._id);
   console.log('Found by _id:', foundBob?.displayName);
 
   // Find one with filter
-  const adminUser = await db.users.findOne({ role: 'admin' });
+  const adminUser = await db().users.findOne({ role: 'admin' });
   console.log('Found admin:', adminUser?.email);
 
   // Find many with pagination
-  const allUsers = await db.users.findMany(
+  const allUsers = await db().users.findMany(
     { isActive: true },
     { sort: { createdAt: -1 }, limit: 10 },
   );
   console.log(`Found ${allUsers.length} active users`);
 
   // Count
-  const userCount = await db.users.count({ isActive: true });
+  const userCount = await db().users.count({ isActive: true });
   console.log(`Total active users: ${userCount}`);
 
   // ========== UPDATE ==========
   console.log('\n--- UPDATE ---');
 
-  const updatedAlice = await db.users.updateById(alice.id, {
+  const updatedAlice = await db().users.updateById(alice.id, {
     displayName: 'Alice M. Smith',
     tags: ['developer', 'typescript', 'mongodb'],
   });
@@ -177,40 +180,40 @@ async function main() {
   );
 
   // Update many
-  const updated = await db.users.updateMany({ role: 'user' }, { isActive: true });
+  const updated = await db().users.updateMany({ role: 'user' }, { isActive: true });
   console.log(`Updated ${updated} users`);
 
   // ========== SOFT DELETE ==========
   console.log('\n--- SOFT DELETE ---');
 
-  const softDeleted = await db.users.softDelete(alice.id);
+  const softDeleted = await db().users.softDelete(alice.id);
   console.log('Soft deleted user:', softDeleted?.deletedAt ? 'yes' : 'no');
 
   // Verify user is excluded from queries (due to policy)
-  const shouldBeNull = await db.users.findById(alice.id);
+  const shouldBeNull = await db().users.findById(alice.id);
   console.log('User findable after soft delete:', shouldBeNull ? 'yes' : 'no');
 
   // Restore
-  const restored = await db.users.restore(alice.id);
+  const restored = await db().users.restore(alice.id);
   console.log('Restored user:', restored?.deletedAt === null ? 'yes' : 'no');
 
   // ========== DELETE ==========
   console.log('\n--- DELETE ---');
 
   // Create a temp user to delete
-  const temp = await db.users.create({
+  const temp = await db().users.create({
     orgId: ctx.tenantIdObjectId!,
     email: 'temp@example.com',
     displayName: 'Temporary User',
   });
 
-  const deleted = await db.users.deleteById(temp.id);
+  const deleted = await db().users.deleteById(temp.id);
   console.log('Deleted user:', deleted ? 'yes' : 'no');
 
   // ========== AGGREGATION ==========
   console.log('\n--- AGGREGATION ---');
 
-  const usersByRole = await db.users.aggregate([
+  const usersByRole = await db().users.aggregate([
     { $match: { isActive: true } },
     { $group: { _id: '$role', count: { $sum: 1 } } },
     { $sort: { count: -1 } },
@@ -228,7 +231,7 @@ async function main() {
   console.log('MongoDB client version:', rawClient.options);
 
   // ========== CLEANUP ==========
-  await orm.close();
+  await db.close();
   console.log('\n✓ Disconnected from MongoDB');
 }
 

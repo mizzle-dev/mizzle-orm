@@ -41,26 +41,6 @@ const posts = await db().posts.findMany({}, {
 - MongoDB aggregations
 - Raw collection access
 
-### [api-comparison.ts](./api-comparison.ts)
-**Migration guide** - Side-by-side comparison of old vs new API.
-
-Shows how the new `mizzle()` API improves upon `createMongoOrm()`:
-
-**Old API (4 steps):**
-```typescript
-const collections = defineCollections({ users, posts });
-const orm = await createMongoOrm({ uri, dbName, collections });
-const context = orm.createContext({ user });
-const db = orm.withContext(context);
-```
-
-**New API (2 steps):**
-```typescript
-const schema = defineSchema({ users, posts });
-const db = await mizzle({ uri, dbName, schema });
-await db({ user }).posts.findMany({});
-```
-
 ## Running Examples
 
 ### Prerequisites

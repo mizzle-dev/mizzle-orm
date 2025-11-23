@@ -135,19 +135,18 @@ const posts = mongoCollection(
 );
 
 // Usage
-const orm = await createMongoOrm({ uri, dbName: 'blog', collections: { authors, posts } });
-const ctx = orm.createContext({});
-const db = orm.withContext(ctx);
+const schema = defineSchema({ authors, posts });
+const db = await mizzle({ uri, dbName: 'blog', schema });
 
 // Create author
-const author = await db.authors.create({
+const author = await db().authors.create({
   name: 'Alice',
   email: 'alice@example.com',
   bio: 'Tech writer',
 });
 
 // Create post - embed happens automatically!
-const post = await db.posts.create({
+const post = await db().posts.create({
   title: 'Getting Started with Mizzle',
   content: 'Learn how to...',
   authorId: author._id,

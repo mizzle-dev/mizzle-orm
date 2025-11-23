@@ -71,21 +71,19 @@ const posts = mongoCollection('posts', {
 Use the Refresh API to populate embeds in all existing documents.
 
 ```typescript
-import { createMongoOrm } from 'mizzle-orm';
+import { mizzle, defineSchema } from 'mizzle-orm';
 
-const orm = await createMongoOrm({
+const schema = defineSchema({ users, posts });
+const db = await mizzle({
   uri: process.env.MONGO_URI!,
   dbName: 'your-db',
-  collections: { users, posts },
+  schema,
 });
-
-const ctx = orm.createContext({});
-const db = orm.withContext(ctx);
 
 // Populate embeds for all existing posts
 console.log('Migrating posts to use embeds...');
 
-const stats = await db.posts.refreshEmbeds('authorEmbed', {
+const stats = await db().posts.refreshEmbeds('authorEmbed', {
   batchSize: 500, // Adjust based on your data size
   dryRun: false,
 });
@@ -96,7 +94,7 @@ console.log(`  Updated: ${stats.updated}`);
 console.log(`  Errors: ${stats.errors}`);
 console.log(`  Skipped: ${stats.skipped} (missing source)`);
 
-await orm.close();
+await db.close();
 ```
 
 **Pro Tips:**
@@ -467,15 +465,15 @@ import cron from 'node-cron';
 cron.schedule('0 2 * * *', async () => {
   console.log('Running daily embed refresh...');
 
-  const orm = await createMongoOrm({ /* ... */ });
-  const db = orm.withContext(orm.createContext({}));
+  const schema = defineSchema({ /* ... */ });
+  const db = await mizzle({ uri, dbName, schema });
 
-  const stats = await db.posts.refreshEmbeds('author', {
+  const stats = await db().posts.refreshEmbeds('author', {
     batchSize: 1000,
   });
 
   console.log(`Refreshed ${stats.updated} posts`);
-  await orm.close();
+  await db.close();
 });
 ```
 

@@ -38,17 +38,13 @@ describe('Relations', () => {
     }
   );
 
-  let orm: Awaited<ReturnType<typeof setupOrm>>;
+  let db: any;
 
-  async function setupOrm() {
-    return createTestOrm({
+  beforeAll(async () => {
+    db = await createTestOrm({
       authors,
       posts,
     });
-  }
-
-  beforeAll(async () => {
-    orm = await setupOrm();
   });
 
   afterAll(async () => {
@@ -61,17 +57,15 @@ describe('Relations', () => {
 
   describe('REFERENCE relations', () => {
     it('should validate references on insert', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Create an author
-      const author = await db.authors.create({
+      const author = await db().authors.create({
         name: 'John Doe',
         email: 'john@example.com',
       });
 
       // Creating post with valid authorId should succeed
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'My Post',
         authorId: author._id,
       });
@@ -81,12 +75,10 @@ describe('Relations', () => {
     });
 
     it('should reject invalid references on insert', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Creating post with non-existent authorId should fail
       await expect(
-        db.posts.create({
+        db().posts.create({
           title: 'Invalid Post',
           authorId: new ObjectId(),
         })
@@ -94,26 +86,24 @@ describe('Relations', () => {
     });
 
     it('should validate references on update', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author1 = await db.authors.create({
+      const author1 = await db().authors.create({
         name: 'Author 1',
         email: 'author1@example.com',
       });
 
-      const author2 = await db.authors.create({
+      const author2 = await db().authors.create({
         name: 'Author 2',
         email: 'author2@example.com',
       });
 
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'Post',
         authorId: author1._id,
       });
 
       // Updating to valid authorId should succeed
-      const updated = await db.posts.updateById(post._id, {
+      const updated = await db().posts.updateById(post._id, {
         authorId: author2._id,
       });
 
@@ -121,22 +111,20 @@ describe('Relations', () => {
     });
 
     it('should reject invalid references on update', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author = await db.authors.create({
+      const author = await db().authors.create({
         name: 'Author',
         email: 'author@example.com',
       });
 
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'Post',
         authorId: author._id,
       });
 
       // Updating to invalid authorId should fail
       await expect(
-        db.posts.updateById(post._id, {
+        db().posts.updateById(post._id, {
           authorId: new ObjectId(),
         })
       ).rejects.toThrow('Invalid reference');
@@ -145,21 +133,19 @@ describe('Relations', () => {
 
   describe('LOOKUP relations with include', () => {
     it('should include single relation', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author = await db.authors.create({
+      const author = await db().authors.create({
         name: 'Jane Doe',
         email: 'jane@example.com',
       });
 
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'Great Article',
         authorId: author._id,
       });
 
       // Fetch post with include
-      const posts = await db.posts.findMany({ _id: post._id }, { include: 'author' });
+      const posts = await db().posts.findMany({ _id: post._id }, { include: 'author' });
 
       expect(posts).toHaveLength(1);
       expect(posts[0].author).toBeDefined();
@@ -168,24 +154,22 @@ describe('Relations', () => {
     });
 
     it('should include relation for multiple documents', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author1 = await db.authors.create({
+      const author1 = await db().authors.create({
         name: 'Author 1',
         email: 'author1@example.com',
       });
 
-      const author2 = await db.authors.create({
+      const author2 = await db().authors.create({
         name: 'Author 2',
         email: 'author2@example.com',
       });
 
-      await db.posts.create({ title: 'Post 1', authorId: author1._id });
-      await db.posts.create({ title: 'Post 2', authorId: author2._id });
-      await db.posts.create({ title: 'Post 3', authorId: author1._id });
+      await db().posts.create({ title: 'Post 1', authorId: author1._id });
+      await db().posts.create({ title: 'Post 2', authorId: author2._id });
+      await db().posts.create({ title: 'Post 3', authorId: author1._id });
 
-      const posts = await db.posts.findMany({}, { include: 'author' });
+      const posts = await db().posts.findMany({}, { include: 'author' });
 
       expect(posts).toHaveLength(3);
       expect(posts[0].author?.name).toBe('Author 1');
@@ -194,24 +178,22 @@ describe('Relations', () => {
     });
 
     it('should handle missing relations gracefully', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author = await db.authors.create({
+      const author = await db().authors.create({
         name: 'Author',
         email: 'author@example.com',
       });
 
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'Post',
         authorId: author._id,
       });
 
       // Delete the author
-      await db.authors.deleteById(author._id);
+      await db().authors.deleteById(author._id);
 
       // Include should not crash and return null for missing relation
-      const posts = await db.posts.findMany({ _id: post._id }, { include: 'author' });
+      const posts = await db().posts.findMany({ _id: post._id }, { include: 'author' });
 
       expect(posts).toHaveLength(1);
       // When relation is missing, MongoDB $lookup returns undefined
@@ -221,32 +203,28 @@ describe('Relations', () => {
 
   describe('include error handling', () => {
     it('should throw error for non-existent relation', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       await expect(
-        db.posts.findMany({}, { include: 'nonExistentRelation' as any })
+        db().posts.findMany({}, { include: 'nonExistentRelation' as any })
       ).rejects.toThrow("Relation 'nonExistentRelation' not found");
     });
   });
 
   describe('Multiple includes', () => {
     it('should include multiple relations using object syntax', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const author = await db.authors.create({
+      const author = await db().authors.create({
         name: 'Test Author',
         email: 'test@example.com',
       });
 
-      const post = await db.posts.create({
+      const post = await db().posts.create({
         title: 'Test Post',
         authorId: author._id,
       });
 
       // Include both author and authorRef
-      const posts = await db.posts.findMany(
+      const posts = await db().posts.findMany(
         { _id: post._id },
         {
           include: {

@@ -39,9 +39,7 @@ Embeds are ideal when:
 ### Simple Embed Example
 
 ```typescript
-import { mongoCollection } from 'mizzle-orm';
-import { string, objectId } from 'mizzle-orm/schema';
-import { embed } from 'mizzle-orm/relations';
+import { mizzle, defineSchema, mongoCollection, string, objectId, embed } from 'mizzle-orm';
 
 // Source collection
 const users = mongoCollection('users', {
@@ -76,19 +74,18 @@ const posts = mongoCollection(
 ### Creating Documents
 
 ```typescript
-const orm = await createMongoOrm({ uri, dbName: 'myapp', collections: { users, posts } });
-const ctx = orm.createContext({});
-const db = orm.withContext(ctx);
+const schema = defineSchema({ users, posts });
+const db = await mizzle({ uri, dbName: 'myapp', schema });
 
 // Create user
-const user = await db.users.create({
+const user = await db().users.create({
   name: 'Alice',
   email: 'alice@example.com',
   avatar: 'https://example.com/alice.jpg',
 });
 
 // Create post - embedded data is automatically populated
-const post = await db.posts.create({
+const post = await db().posts.create({
   title: 'Hello World',
   content: 'My first post!',
   authorId: user._id,
@@ -784,7 +781,7 @@ const posts = mongoCollection('posts', {
 });
 
 // Usage - requires include
-const posts = await db.posts.findMany({}, {
+const posts = await db().posts.findMany({}, {
   include: { author: true }, // ← Required for lookup
 });
 ```
@@ -808,7 +805,7 @@ const posts = mongoCollection('posts', {
 });
 
 // Usage - no include needed!
-const posts = await db.posts.findMany({});
+const posts = await db().posts.findMany({});
 // author data is always present
 ```
 

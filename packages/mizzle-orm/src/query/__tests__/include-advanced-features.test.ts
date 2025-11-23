@@ -7,10 +7,8 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { MongoClient, Db, ObjectId as MongoObjectId } from 'mongodb';
 import {
   mongoCollection,
-  createMongoOrm,
   lookup,
   objectId,
   string,
@@ -18,13 +16,12 @@ import {
   number,
   boolean as booleanField,
   object as objectField,
-  InferOrm,
-  defineCollections,
+  Mizzle,
+  defineSchema,
 } from '../../index';
+import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 
 describe('Advanced Include Features', () => {
-  let client: MongoClient;
-  let testDb: Db;
 
   // ============================================================
   // Setup Collections
@@ -121,7 +118,7 @@ describe('Advanced Include Features', () => {
     },
   });
 
-  const collections = defineCollections({
+  const schema = defineSchema({
     industries,
     organizations,
     users,
@@ -129,34 +126,22 @@ describe('Advanced Include Features', () => {
     comments,
   });
 
-  let orm!: InferOrm<typeof collections>;
+  let db!: Mizzle<typeof schema>;
 
   // ============================================================
   // Test Setup
   // ============================================================
 
   beforeAll(async () => {
-    const mongoUri = 'mongodb://localhost:27017';
-    client = new MongoClient(mongoUri);
-    await client.connect();
-    testDb = client.db('mizzle_test_include_features');
-
-    orm = await createMongoOrm({
-      client,
-      dbName: 'mizzle_test_include_features',
-      collections,
-    });
-
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    db = await createTestOrm(schema);
 
     // Create test data
-    const industry = await db.industries.create({
+    const industry = await db().industries.create({
       name: 'Technology',
       description: 'Tech companies',
     });
 
-    const org1 = await db.organizations.create({
+    const org1 = await db().organizations.create({
       name: 'Acme Corp',
       industryId: industry._id,
       website: 'https://acme.com',
@@ -164,7 +149,7 @@ describe('Advanced Include Features', () => {
       active: true,
     });
 
-    const org2 = await db.organizations.create({
+    const org2 = await db().organizations.create({
       name: 'Inactive Corp',
       industryId: industry._id,
       website: 'https://inactive.com',
@@ -172,7 +157,7 @@ describe('Advanced Include Features', () => {
       active: false,
     });
 
-    const user1 = await db.users.create({
+    const user1 = await db().users.create({
       name: 'Alice',
       email: 'alice@example.com',
       password: 'hashed_password',
@@ -185,7 +170,7 @@ describe('Advanced Include Features', () => {
       },
     });
 
-    const user2 = await db.users.create({
+    const user2 = await db().users.create({
       name: 'Bob',
       email: 'bob@example.com',
       password: 'hashed_password',
@@ -198,7 +183,7 @@ describe('Advanced Include Features', () => {
       },
     });
 
-    const post1 = await db.posts.create({
+    const post1 = await db().posts.create({
       title: 'First Post',
       content: 'Content 1',
       authorId: user1._id,
@@ -206,7 +191,7 @@ describe('Advanced Include Features', () => {
       viewCount: 100,
     });
 
-    const post2 = await db.posts.create({
+    const post2 = await db().posts.create({
       title: 'Second Post',
       content: 'Content 2',
       authorId: user2._id,
@@ -214,7 +199,7 @@ describe('Advanced Include Features', () => {
       viewCount: 50,
     });
 
-    await db.comments.create({
+    await db().comments.create({
       postId: post1._id,
       authorId: user1._id,
       content: 'Great post!',
@@ -222,7 +207,7 @@ describe('Advanced Include Features', () => {
       likes: 10,
     });
 
-    await db.comments.create({
+    await db().comments.create({
       postId: post1._id,
       authorId: user2._id,
       content: 'Thanks for sharing',
@@ -230,7 +215,7 @@ describe('Advanced Include Features', () => {
       likes: 5,
     });
 
-    await db.comments.create({
+    await db().comments.create({
       postId: post1._id,
       authorId: user1._id,
       content: 'Pending comment',
@@ -238,7 +223,7 @@ describe('Advanced Include Features', () => {
       likes: 0,
     });
 
-    await db.comments.create({
+    await db().comments.create({
       postId: post2._id,
       authorId: user1._id,
       content: 'Nice work',
@@ -248,9 +233,7 @@ describe('Advanced Include Features', () => {
   });
 
   afterAll(async () => {
-    await testDb.dropDatabase();
-    await client.close();
-    await orm.close();
+    await teardownTestDb();
   });
 
   // ============================================================
@@ -259,10 +242,8 @@ describe('Advanced Include Features', () => {
 
   describe('Nested Includes', () => {
     it('should support 2-level nested includes', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             include: {
@@ -280,10 +261,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should support 3-level nested includes', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const comments = await db.comments.findMany({}, {
+      const comments = await db().comments.findMany({}, {
         include: {
           post: {
             include: {
@@ -306,10 +285,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should support multiple nested includes at same level', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const comments = await db.comments.findMany({}, {
+      const comments = await db().comments.findMany({}, {
         include: {
           post: {
             include: {
@@ -339,10 +316,8 @@ describe('Advanced Include Features', () => {
 
   describe('Field Selection', () => {
     it('should support array syntax for field selection', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             select: ['name', 'email'],
@@ -361,10 +336,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should support nested field paths in array syntax', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             select: ['name', 'profile.avatar'],
@@ -380,10 +353,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should support MongoDB projection syntax for field selection', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             select: {
@@ -404,10 +375,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should combine field selection with nested includes', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             select: ['name', 'email', 'organizationId'],
@@ -437,10 +406,8 @@ describe('Advanced Include Features', () => {
 
   describe('Include Filters', () => {
     it('should filter related documents with where clause', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             where: { role: 'admin' },
@@ -457,10 +424,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should sort related documents', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             sort: { createdAt: -1 },
@@ -474,12 +439,10 @@ describe('Advanced Include Features', () => {
     });
 
     it('should limit related documents', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
       // Note: limit doesn't make sense for `one: true` relations,
       // but it should still work without error
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             limit: 1,
@@ -492,10 +455,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should combine where + sort + limit', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             where: { active: true },
@@ -514,10 +475,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should combine all options: select + where + sort + limit + nested includes', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const posts = await db.posts.findMany({}, {
+      const posts = await db().posts.findMany({}, {
         include: {
           author: {
             select: ['name', 'email', 'role', 'organizationId'],
@@ -553,10 +512,8 @@ describe('Advanced Include Features', () => {
 
   describe('Default Relation Options', () => {
     it('should use default select from relation definition', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const users = await db.users.findMany({}, {
+      const users = await db().users.findMany({}, {
         include: 'organization', // Use default options
       });
 
@@ -572,10 +529,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should use default where from relation definition', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const users = await db.users.findMany({}, {
+      const users = await db().users.findMany({}, {
         include: 'organization', // Use default options
       });
 
@@ -586,7 +541,7 @@ describe('Advanced Include Features', () => {
         if (user.organization) {
           // If organization exists, it must be active (due to default where)
           const orgId = user.organizationId;
-          const org = await db.organizations.findById(orgId);
+          const org = await db().organizations.findById(orgId);
           if (org) {
             // Only active orgs should be included
             expect(org.active).toBe(true);
@@ -596,10 +551,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should override default select with query-time select', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const users = await db.users.findMany({}, {
+      const users = await db().users.findMany({}, {
         include: {
           organization: {
             select: ['name', 'employeeCount'], // Override default
@@ -618,10 +571,8 @@ describe('Advanced Include Features', () => {
     });
 
     it('should AND query-time where with default where', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const users = await db.users.findMany({}, {
+      const users = await db().users.findMany({}, {
         include: {
           organization: {
             // Default where: { active: true }
@@ -635,7 +586,7 @@ describe('Advanced Include Features', () => {
       expect(users.length).toBeGreaterThan(0);
       for (const user of users) {
         if (user.organization) {
-          const org = await db.organizations.findById(user.organizationId);
+          const org = await db().organizations.findById(user.organizationId);
           expect(org?.active).toBe(true);
           expect(org?.employeeCount).toBeGreaterThanOrEqual(100);
         }

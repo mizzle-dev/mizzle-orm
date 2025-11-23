@@ -4,7 +4,7 @@
  */
 
 // Core exports
-export { createMongoOrm, defineCollections, mizzle, defineSchema } from './orm/orm';
+export { mizzle, defineSchema } from './orm/orm';
 export { mongoCollection } from './collection/collection';
 
 // Relation factory functions
@@ -46,7 +46,7 @@ export type {
 
 export type { CollectionDefinition, CollectionMeta } from './types/collection';
 
-export type { OrmContext, OrmConfig, MongoOrm, InferOrm, Mizzle, MizzleConfig } from './types/orm';
+export type { OrmContext, Mizzle, MizzleConfig } from './types/orm';
 
 export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/include';
 

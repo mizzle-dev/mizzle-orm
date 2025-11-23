@@ -28,8 +28,8 @@ Welcome to the Mizzle ORM documentation! This guide will help you understand and
 ### Basic Embed Example
 
 ```typescript
-import { createMongoOrm, mongoCollection, embed } from 'mizzle-orm';
-import { string, objectId } from 'mizzle-orm/fields';
+import { mizzle, defineSchema, mongoCollection, embed } from 'mizzle-orm';
+import { string, objectId } from 'mizzle-orm';
 
 const users = mongoCollection('users', {
   _id: objectId().internalId(),
@@ -53,16 +53,15 @@ const posts = mongoCollection('posts', {
   },
 });
 
-const orm = await createMongoOrm({
+const schema = defineSchema({ users, posts });
+const db = await mizzle({
   uri: 'mongodb://localhost:27017',
   dbName: 'blog',
-  collections: { users, posts },
+  schema,
 });
 
-const db = orm.withContext(orm.createContext({}));
-
 // Create post - author data embedded automatically!
-const post = await db.posts.create({
+const post = await db().posts.create({
   title: 'Hello World',
   authorId: userId,
 });
@@ -219,13 +218,13 @@ embed(sourceCollection, {
 
 ```typescript
 // Query-time refresh (read-only)
-const posts = await db.posts.findMany(
+const posts = await db().posts.findMany(
   { status: 'published' },
   { refreshEmbeds: ['author', 'category'] }
 );
 
 // Manual batch refresh (persisted)
-const stats = await db.posts.refreshEmbeds('author', {
+const stats = await db().posts.refreshEmbeds('author', {
   filter: { updatedAt: { $lt: yesterday } },
   batchSize: 100,
   dryRun: false,
@@ -358,7 +357,7 @@ reverse: {
 ```typescript
 // Daily maintenance
 cron.schedule('0 2 * * *', async () => {
-  await db.posts.refreshEmbeds('author', { batchSize: 500 });
+  await db().posts.refreshEmbeds('author', { batchSize: 500 });
 });
 ```
 
@@ -382,7 +381,7 @@ reverse: {
 **Solutions:**
 1. Enable `keepFresh: true` for auto-updates
 2. Use query-time refresh: `{ refreshEmbeds: ['field'] }`
-3. Run batch refresh: `db.collection.refreshEmbeds('field')`
+3. Run batch refresh: `db().collection.refreshEmbeds('field')`
 
 ### Slow Writes
 

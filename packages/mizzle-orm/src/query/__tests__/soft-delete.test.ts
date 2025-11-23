@@ -6,10 +6,9 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { teardownTestDb, clearTestDb, createTestOrm } from '../../test/setup';
 import { mongoCollection } from '../../collection/collection';
 import { string, date } from '../../schema/fields';
-import type { MongoOrm } from '../../types/orm';
 
 describe('Soft Delete', () => {
-  let orm: MongoOrm;
+  let db: any;
 
   // Test collection with soft delete
   const tasks = mongoCollection('tasks', {
@@ -19,7 +18,7 @@ describe('Soft Delete', () => {
   });
 
   beforeAll(async () => {
-    orm = await createTestOrm({ tasks });
+    db = await createTestOrm({ tasks });
   });
 
   afterAll(async () => {
@@ -32,27 +31,23 @@ describe('Soft Delete', () => {
 
   describe('softDelete()', () => {
     it('should soft delete a document by setting deletedAt', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Task to soft delete' });
+      const task = await db().tasks.create({ title: 'Task to soft delete' });
 
-      const deleted = await db.tasks.softDelete(task._id);
+      const deleted = await db().tasks.softDelete(task._id);
 
       expect(deleted?.deletedAt).toBeInstanceOf(Date);
       expect(deleted?.title).toBe('Task to soft delete');
     });
 
     it('should not actually remove the document', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Task' });
+      const task = await db().tasks.create({ title: 'Task' });
 
-      await db.tasks.softDelete(task._id);
+      await db().tasks.softDelete(task._id);
 
       // Access raw collection to verify it still exists
-      const raw = db.tasks.rawCollection();
+      const raw = db().tasks.rawCollection();
       const doc = await raw.findOne({ _id: task._id });
       expect(doc).not.toBeNull();
       expect(doc?.deletedAt).toBeInstanceOf(Date);
@@ -61,13 +56,11 @@ describe('Soft Delete', () => {
 
   describe('restore()', () => {
     it('should restore a soft-deleted document', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Task to restore' });
-      await db.tasks.softDelete(task._id);
+      const task = await db().tasks.create({ title: 'Task to restore' });
+      await db().tasks.softDelete(task._id);
 
-      const restored = await db.tasks.restore(task._id);
+      const restored = await db().tasks.restore(task._id);
 
       expect(restored?.deletedAt).toBeNull();
       expect(restored?.title).toBe('Task to restore');
@@ -76,13 +69,11 @@ describe('Soft Delete', () => {
 
   describe('soft delete with queries', () => {
     it('should allow finding soft-deleted documents via raw collection', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Deleted Task' });
-      await db.tasks.softDelete(task._id);
+      const task = await db().tasks.create({ title: 'Deleted Task' });
+      await db().tasks.softDelete(task._id);
 
-      const raw = db.tasks.rawCollection();
+      const raw = db().tasks.rawCollection();
       const found = await raw.findOne({ _id: task._id });
 
       expect(found).not.toBeNull();
@@ -92,27 +83,23 @@ describe('Soft Delete', () => {
 
   describe('hard delete vs soft delete', () => {
     it('should actually remove document with deleteById', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Hard delete task' });
+      const task = await db().tasks.create({ title: 'Hard delete task' });
 
-      await db.tasks.deleteById(task._id);
+      await db().tasks.deleteById(task._id);
 
-      const raw = db.tasks.rawCollection();
+      const raw = db().tasks.rawCollection();
       const found = await raw.findOne({ _id: task._id });
       expect(found).toBeNull();
     });
 
     it('should preserve document with softDelete', async () => {
-      const ctx = orm.createContext({});
-      const db = orm.withContext(ctx);
 
-      const task = await db.tasks.create({ title: 'Soft delete task' });
+      const task = await db().tasks.create({ title: 'Soft delete task' });
 
-      await db.tasks.softDelete(task._id);
+      await db().tasks.softDelete(task._id);
 
-      const raw = db.tasks.rawCollection();
+      const raw = db().tasks.rawCollection();
       const found = await raw.findOne({ _id: task._id });
       expect(found).not.toBeNull();
     });
@@ -124,13 +111,11 @@ describe('Soft Delete', () => {
         name: string(),
       });
 
-      const testOrm = await createTestOrm({ noSoftDelete });
-      const ctx = testOrm.createContext({});
-      const db = testOrm.withContext(ctx);
+      const db = await createTestOrm({ noSoftDelete });
 
-      const doc = await db.noSoftDelete.create({ name: 'Test' });
+      const doc = await db().noSoftDelete.create({ name: 'Test' });
 
-      await expect(db.noSoftDelete.softDelete(doc._id)).rejects.toThrow(
+      await expect(db().noSoftDelete.softDelete(doc._id)).rejects.toThrow(
         'Soft delete not configured for this collection'
       );
     });

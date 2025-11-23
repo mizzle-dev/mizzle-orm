@@ -46,23 +46,21 @@ describe('Reverse Embeds - Array Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ tags, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ tags, posts });
 
     // Create tags
-    const tag1 = await db.tags.create({
+    const tag1 = await db().tags.create({
       name: 'Tech',
       color: 'blue',
     });
 
-    const tag2 = await db.tags.create({
+    const tag2 = await db().tags.create({
       name: 'News',
       color: 'red',
     });
 
     // Create post with multiple tags
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My Post',
       tagIds: [tag1._id, tag2._id],
     });
@@ -75,13 +73,13 @@ describe('Reverse Embeds - Array Strategy', () => {
     expect(post.tags[1].name).toBe('News');
 
     // Update one of the tags
-    await db.tags.updateById(tag1._id, {
+    await db().tags.updateById(tag1._id, {
       name: 'Technology',
       color: 'dark-blue',
     });
 
     // Fetch post again - embedded data for tag1 should be updated
-    const refreshedPost = await db.posts.findById(post._id);
+    const refreshedPost = await db().posts.findById(post._id);
 
     expect(refreshedPost).toBeDefined();
     if (!Array.isArray(refreshedPost?.tags)) throw new Error('Expected array embed');
@@ -135,18 +133,16 @@ describe('Reverse Embeds - In-Place Strategy', () => {
       },
     );
 
-    const orm = await createTestOrm({ directories, workflows });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ directories, workflows });
 
     // Create directory
-    const directory = await db.directories.create({
+    const directory = await db().directories.create({
       name: 'Legal',
       type: 'department',
     });
 
     // Create workflow with embedded directory
-    const workflow = await db.workflows.create({
+    const workflow = await db().workflows.create({
       name: 'Approval Process',
       directory: {
         _id: directory._id,
@@ -158,13 +154,13 @@ describe('Reverse Embeds - In-Place Strategy', () => {
     expect(workflow.directory.type).toBe('department');
 
     // Update directory
-    await db.directories.updateById(directory._id, {
+    await db().directories.updateById(directory._id, {
       name: 'Legal Department',
       type: 'division',
     });
 
     // Fetch workflow again - embedded data should be updated
-    const refreshedWorkflow = await db.workflows.findById(workflow._id);
+    const refreshedWorkflow = await db().workflows.findById(workflow._id);
 
     expect(refreshedWorkflow).toBeDefined();
     expect(refreshedWorkflow?.directory.name).toBe('Legal Department');

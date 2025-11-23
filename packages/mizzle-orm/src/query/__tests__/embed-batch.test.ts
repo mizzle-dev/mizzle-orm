@@ -43,23 +43,21 @@ describe('Batch Embed Optimization', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
     // Create author
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Alice',
       email: 'alice@example.com',
     });
 
     // Create multiple posts - embeddings are optimized per document
-    const post1 = await db.posts.create({
+    const post1 = await db().posts.create({
       title: 'Post 1',
       authorId: author._id,
     });
 
-    const post2 = await db.posts.create({
+    const post2 = await db().posts.create({
       title: 'Post 2',
       authorId: author._id,
     });
@@ -96,18 +94,16 @@ describe('Batch Embed Optimization', () => {
       },
     );
 
-    const orm = await createTestOrm({ tags, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ tags, posts });
 
     // Create tags
-    const tag1 = await db.tags.create({ name: 'Tech', color: 'blue' });
-    const tag2 = await db.tags.create({ name: 'News', color: 'red' });
-    const tag3 = await db.tags.create({ name: 'Sports', color: 'green' });
+    const tag1 = await db().tags.create({ name: 'Tech', color: 'blue' });
+    const tag2 = await db().tags.create({ name: 'News', color: 'red' });
+    const tag3 = await db().tags.create({ name: 'Sports', color: 'green' });
 
     // Create post with multiple tags
     // Should batch all tag lookups into a single query
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'Multi-tag Post',
       tagIds: [tag1._id, tag2._id, tag3._id],
     });
@@ -147,28 +143,26 @@ describe('Batch Embed Optimization', () => {
       },
     );
 
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Alice',
       email: 'alice@example.com',
     });
 
     // Create multiple posts by the same author
-    await db.posts.create({ title: 'Post 1', authorId: author._id });
-    await db.posts.create({ title: 'Post 2', authorId: author._id });
-    await db.posts.create({ title: 'Post 3', authorId: author._id });
+    await db().posts.create({ title: 'Post 1', authorId: author._id });
+    await db().posts.create({ title: 'Post 2', authorId: author._id });
+    await db().posts.create({ title: 'Post 3', authorId: author._id });
 
     // Update author - updateMany is used internally to batch reverse embed updates
-    await db.authors.updateById(author._id, {
+    await db().authors.updateById(author._id, {
       name: 'Alice Smith',
       email: 'alice.smith@example.com',
     });
 
     // All posts should have updated author data
-    const allPosts = await db.posts.findMany({});
+    const allPosts = await db().posts.findMany({});
     expect(allPosts).toHaveLength(3);
     for (const post of allPosts) {
       expect(post.author?.name).toBe('Alice Smith');

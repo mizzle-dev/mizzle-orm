@@ -46,19 +46,17 @@ const posts = mongoCollection(
 
 describe('Reverse Embeds - keepFresh', () => {
   it('should auto-update embedded data when source changes', async () => {
-    const orm = await createTestOrm({ authors, posts });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ authors, posts });
 
     // Create author
-    const author = await db.authors.create({
+    const author = await db().authors.create({
       name: 'Alice',
       email: 'alice@example.com',
       bio: 'Loves writing',
     });
 
     // Create post with embedded author
-    const post = await db.posts.create({
+    const post = await db().posts.create({
       title: 'My First Post',
       authorId: author._id,
     });
@@ -70,7 +68,7 @@ describe('Reverse Embeds - keepFresh', () => {
     expect(post.author?.email).toBe('alice@example.com');
 
     // Update author
-    const updatedAuthor = await db.authors.updateById(author._id, {
+    const updatedAuthor = await db().authors.updateById(author._id, {
       name: 'Alice Smith',
       email: 'alice.smith@example.com',
     });
@@ -78,7 +76,7 @@ describe('Reverse Embeds - keepFresh', () => {
     expect(updatedAuthor?.name).toBe('Alice Smith');
 
     // Fetch post again - embedded data should be updated
-    const refreshedPost = await db.posts.findById(post._id);
+    const refreshedPost = await db().posts.findById(post._id);
 
     expect(refreshedPost).toBeDefined();
     if (Array.isArray(refreshedPost?.author)) throw new Error('Expected single embed');
@@ -121,17 +119,15 @@ describe('Reverse Embeds - keepFresh', () => {
       },
     );
 
-    const orm = await createTestOrm({ tags, articles });
-    const ctx = orm.createContext({});
-    const db = orm.withContext(ctx);
+    const db = await createTestOrm({ tags, articles });
 
-    const tag = await db.tags.create({
+    const tag = await db().tags.create({
       name: 'Tech',
       color: 'blue',
       description: 'Technology articles',
     });
 
-    const article = await db.articles.create({
+    const article = await db().articles.create({
       title: 'Tech Article',
       tagId: tag._id,
     });
@@ -144,24 +140,24 @@ describe('Reverse Embeds - keepFresh', () => {
     expect(article.tag.color).toBe('blue');
 
     // Update only description (not a watched field)
-    await db.tags.updateById(tag._id, {
+    await db().tags.updateById(tag._id, {
       description: 'Updated description',
     });
 
     // Embed should NOT be updated (description is not in watchFields)
-    const article1 = await db.articles.findById(article._id);
+    const article1 = await db().articles.findById(article._id);
     if (!article1?.tag || Array.isArray(article1.tag))
       throw new Error('Expected single embed');
     expect(article1.tag.name).toBe('Tech');
     expect(article1.tag.color).toBe('blue');
 
     // Update a watched field
-    await db.tags.updateById(tag._id, {
+    await db().tags.updateById(tag._id, {
       name: 'Technology',
     });
 
     // Embed SHOULD be updated now
-    const article2 = await db.articles.findById(article._id);
+    const article2 = await db().articles.findById(article._id);
     if (Array.isArray(article2?.tag)) throw new Error('Expected single embed');
     expect(article2?.tag?.name).toBe('Technology');
     expect(article2?.tag?.color).toBe('blue');
