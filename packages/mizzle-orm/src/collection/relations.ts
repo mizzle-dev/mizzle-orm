@@ -62,10 +62,14 @@ export function reference<TOther extends SchemaDefinition, TTargets extends Rela
  * });
  * ```
  */
-export function lookup<TOther extends SchemaDefinition, TTargets extends RelationTargets>(
+export function lookup<
+  TOther extends SchemaDefinition,
+  TTargets extends RelationTargets,
+  const TConfig extends Omit<LookupRelation, 'type' | 'targetCollection' | '_targetCollectionDef'>,
+>(
   targetCollection: CollectionDefinition<TOther, TTargets>,
-  config: Omit<LookupRelation, 'type' | 'targetCollection' | '_targetCollectionDef'>,
-): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>> {
+  config: TConfig,
+): TypedRelation<LookupRelation, CollectionDefinition<TOther, TTargets>, TConfig> {
   return {
     type: RelationType.LOOKUP,
     targetCollection: targetCollection._meta.name,

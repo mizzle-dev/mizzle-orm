@@ -14,6 +14,7 @@ describe('Type Inference', () => {
   // Organizations
   const organizations = mongoCollection('test_orgs_ti', {
     name: string(),
+    type: string().optional(),
   });
 
   // Users with organization relation
@@ -30,6 +31,9 @@ describe('Type Inference', () => {
           localField: 'organizationId',
           foreignField: '_id',
           one: true,
+          projection: {
+            name: 1,
+          }
         }),
       },
     }
@@ -342,6 +346,44 @@ describe('Type Inference', () => {
 
       // Silence unused variable warnings
       console.log(orgId);
+    }
+  });
+
+  it('should apply default projection from relation definition when using include: true', async () => {
+    // Create test data
+    const org = await db().organizations.create({ name: 'Test Org', type: 'Business' });
+    await db().users.create({
+      name: 'Test User',
+      email: 'test@example.com',
+      organizationId: org._id,
+    });
+
+    // The users collection has a default projection on the organization relation
+    // projection: { name: 1 } - so only name and _id should be available
+    const users = await db().users.findMany({}, {
+      include: {
+        organization: true, // Using true should apply default projection
+      },
+    });
+
+    const user = users[0];
+    expect(user).toBeDefined();
+
+    if (user?.organization) {
+      // These fields SHOULD be accessible (in default projection + _id)
+      const orgName: string = user.organization.name;
+      const orgId = user.organization._id; // _id always included
+
+      // This field should NOT be accessible (not in default projection)
+      // @ts-expect-error - type was not in default projection
+      const orgType = user.organization.type;
+
+      // Runtime assertions
+      expect(orgName).toBe('Test Org');
+      expect(orgId).toBeDefined();
+
+      // Silence unused variable warnings
+      console.log(orgType);
     }
   });
 });

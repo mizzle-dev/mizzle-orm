@@ -55,6 +55,20 @@ type ApplyFieldSelection<TDoc, TSelect> = TSelect extends Record<string, any>
   : TDoc; // No projection specified: return full document
 
 /**
+ * Extract default projection from a relation definition
+ * Checks both the relation config (from _relConfig phantom type) and the relation itself
+ */
+type ExtractDefaultProjection<TRel> = TRel extends { _relConfig?: infer TConfig }
+  ? TConfig extends { projection?: infer TProj }
+    ? TProj
+    : TRel extends { projection?: infer TProj }
+      ? TProj
+      : never
+  : TRel extends { projection?: infer TProj }
+    ? TProj
+    : never;
+
+/**
  * Configuration for nested includes on a related collection
  * Can accept either a CollectionDefinition directly or extract from TypedRelation
  */
@@ -95,6 +109,7 @@ export type IncludeConfig<TRelationTargets extends RelationTargets> =
 /**
  * Add a single populated relation field to a document type
  * Handles both field projection and nested includes
+ * Applies default projection from relation definition when config is `true`
  */
 type AddPopulatedField<
   TDoc,
@@ -105,7 +120,14 @@ type AddPopulatedField<
   ? TDoc & {
       [K in TRelationName]: (
         TConfig extends true
-          ? InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+          ? // Check if relation has a default projection
+            ExtractDefaultProjection<TRelation> extends infer TDefaultProj
+            ? [TDefaultProj] extends [never]
+              ? // No default projection, return full document
+                InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
+              : // Apply default projection
+                ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TDefaultProj> | null
+            : InferDocument<CollectionDefinition<TSchema, TNestedRelations>> | null
           : TConfig extends { include: any; projection: any }
             ? WithIncluded<
                 ApplyFieldSelection<InferDocument<CollectionDefinition<TSchema, TNestedRelations>>, TConfig['projection']>,
