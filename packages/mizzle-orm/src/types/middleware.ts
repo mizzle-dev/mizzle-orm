@@ -1,7 +1,6 @@
 import type { Document, Filter } from 'mongodb';
-import type { CollectionDefinition } from './collection.js';
-import type { OrmContext } from './orm.js';
-import type { QueryOptions } from './query.js';
+import type { CollectionDefinition } from './collection';
+import type { OrmContext, QueryOptions } from './orm';
 
 /**
  * All possible ORM operations

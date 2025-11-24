@@ -2,7 +2,7 @@
  * Built-in middlewares and composition utilities for Mizzle ORM
  */
 
-import type { Middleware, MiddlewareContext, Operation, ReadOperation, WriteOperation } from '../types/middleware.js';
+import type { Middleware, MiddlewareContext, Operation } from '../types/middleware';
 
 // ============================================================================
 // BUILT-IN MIDDLEWARES
@@ -283,7 +283,7 @@ export function cachingMiddleware(config: CachingConfig): Middleware {
 
   const getKey = keyGenerator || defaultKeyGenerator;
 
-  return async (ctx, next) => {
+  return async <TResult>(ctx: MiddlewareContext, next: () => Promise<TResult>): Promise<TResult> => {
     // Only cache specified operations or read operations by default
     const shouldCache = operations
       ? operations.includes(ctx.operation)
@@ -297,7 +297,7 @@ export function cachingMiddleware(config: CachingConfig): Middleware {
     const cacheKey = getKey(ctx);
     const cached = await store.get(cacheKey);
     if (cached !== null && cached !== undefined) {
-      return cached;
+      return cached as TResult;
     }
 
     // Execute query
@@ -652,13 +652,25 @@ export function validationMiddleware(config: ValidationConfig): Middleware {
  * ```
  */
 export function compose(...middlewares: Middleware[]): Middleware {
-  return async (ctx, next) => {
+  return async <TResult>(ctx: MiddlewareContext, next: () => Promise<TResult>): Promise<TResult> => {
     // Build chain from right to left
-    const chain = middlewares.reduceRight(
-      (next, middleware) => () => middleware(ctx, next),
-      next,
-    );
-    return chain();
+    let index = -1;
+
+    const dispatch = async (i: number): Promise<TResult> => {
+      if (i <= index) {
+        throw new Error('next() called multiple times');
+      }
+      index = i;
+
+      const middleware = middlewares[i];
+      if (!middleware) {
+        return next();
+      }
+
+      return middleware(ctx, () => dispatch(i + 1));
+    };
+
+    return dispatch(0);
   };
 }
 
