@@ -341,7 +341,13 @@ export class CollectionFacade<
    */
   async updateById(id: string | ObjectId, data: TUpdate): Promise<TDoc | null> {
     const filter = this.buildIdFilter(id);
-    return this.updateOne(filter, data);
+    return this.executeWithMiddlewares(
+      'updateById',
+      async () => {
+        return this.updateOneInternal(filter, data);
+      },
+      { filter, data },
+    );
   }
 
   /**
@@ -351,73 +357,80 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'update',
       async () => {
-        const finalFilter = this.applyPolicies(filter);
-
-        // Get old document for hooks and policies
-        const oldDoc = await this.collection.findOne(finalFilter, {
-          session: this.ctx.session,
-        });
-        if (!oldDoc) {
-          return null;
-        }
-
-        // Apply update timestamp
-        const updateData = this.applyUpdateTimestamps(data as any);
-
-        // Run before hooks
-        let finalUpdate = updateData;
-        if (this.collectionDef._meta.hooks.beforeUpdate) {
-          finalUpdate = await this.collectionDef._meta.hooks.beforeUpdate(
-            this.ctx,
-            oldDoc as any,
-            updateData,
-          );
-        }
-
-        // Check policies
-        if (this.collectionDef._meta.policies.canUpdate) {
-          const allowed = await this.collectionDef._meta.policies.canUpdate(
-            this.ctx,
-            oldDoc as any,
-            finalUpdate,
-          );
-          if (!allowed) {
-            throw new Error('Update not allowed by policy');
-          }
-        }
-
-        // Validate references
-        await this.relationHelper.validateReferences(finalUpdate as any);
-
-        // Process forward embeds (fetch and embed referenced data)
-        finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
-
-        // Update
-        const result = await this.collection.findOneAndUpdate(
-          finalFilter,
-          { $set: finalUpdate } as any,
-          {
-            returnDocument: 'after',
-            session: this.ctx.session,
-          },
-        );
-
-        if (!result) {
-          return null;
-        }
-
-        // Run after hooks
-        if (this.collectionDef._meta.hooks.afterUpdate) {
-          await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
-        }
-
-        // Propagate reverse embeds if this collection is a source for any embeds
-        await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
-
-        return result as TDoc;
+        return this.updateOneInternal(filter, data);
       },
       { filter, data, oldDoc: undefined }, // oldDoc will be fetched inside
     );
+  }
+
+  /**
+   * Internal update logic (shared by updateOne and updateById)
+   */
+  private async updateOneInternal(filter: Filter<TDoc>, data: TUpdate): Promise<TDoc | null> {
+    const finalFilter = this.applyPolicies(filter);
+
+    // Get old document for hooks and policies
+    const oldDoc = await this.collection.findOne(finalFilter, {
+      session: this.ctx.session,
+    });
+    if (!oldDoc) {
+      return null;
+    }
+
+    // Apply update timestamp
+    const updateData = this.applyUpdateTimestamps(data as any);
+
+    // Run before hooks
+    let finalUpdate = updateData;
+    if (this.collectionDef._meta.hooks.beforeUpdate) {
+      finalUpdate = await this.collectionDef._meta.hooks.beforeUpdate(
+        this.ctx,
+        oldDoc as any,
+        updateData,
+      );
+    }
+
+    // Check policies
+    if (this.collectionDef._meta.policies.canUpdate) {
+      const allowed = await this.collectionDef._meta.policies.canUpdate(
+        this.ctx,
+        oldDoc as any,
+        finalUpdate,
+      );
+      if (!allowed) {
+        throw new Error('Update not allowed by policy');
+      }
+    }
+
+    // Validate references
+    await this.relationHelper.validateReferences(finalUpdate as any);
+
+    // Process forward embeds (fetch and embed referenced data)
+    finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+
+    // Update
+    const result = await this.collection.findOneAndUpdate(
+      finalFilter,
+      { $set: finalUpdate } as any,
+      {
+        returnDocument: 'after',
+        session: this.ctx.session,
+      },
+    );
+
+    if (!result) {
+      return null;
+    }
+
+    // Run after hooks
+    if (this.collectionDef._meta.hooks.afterUpdate) {
+      await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
+    }
+
+    // Propagate reverse embeds if this collection is a source for any embeds
+    await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
+
+    return result as TDoc;
   }
 
   /**
@@ -445,7 +458,13 @@ export class CollectionFacade<
    */
   async deleteById(id: string | ObjectId): Promise<boolean> {
     const filter = this.buildIdFilter(id);
-    return this.deleteOne(filter);
+    return this.executeWithMiddlewares(
+      'deleteById',
+      async () => {
+        return this.deleteOneInternal(filter);
+      },
+      { filter },
+    );
   }
 
   /**
@@ -455,48 +474,55 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'delete',
       async () => {
-        const finalFilter = this.applyPolicies(filter);
-
-        // Get document for hooks and policies
-        const doc = await this.collection.findOne(finalFilter, {
-          session: this.ctx.session,
-        });
-        if (!doc) {
-          return false;
-        }
-
-        // Run before hooks
-        if (this.collectionDef._meta.hooks.beforeDelete) {
-          await this.collectionDef._meta.hooks.beforeDelete(this.ctx, doc as any);
-        }
-
-        // Check policies
-        if (this.collectionDef._meta.policies.canDelete) {
-          const allowed = await this.collectionDef._meta.policies.canDelete(this.ctx, doc as any);
-          if (!allowed) {
-            throw new Error('Delete not allowed by policy');
-          }
-        }
-
-        // Delete
-        const result = await this.collection.deleteOne(finalFilter, {
-          session: this.ctx.session,
-        });
-
-        // Run after hooks
-        if (result.deletedCount > 0 && this.collectionDef._meta.hooks.afterDelete) {
-          await this.collectionDef._meta.hooks.afterDelete(this.ctx, doc as any);
-        }
-
-        // Handle delete cascades
-        if (result.deletedCount > 0) {
-          await this.handleDeleteCascades(doc as TDoc);
-        }
-
-        return result.deletedCount > 0;
+        return this.deleteOneInternal(filter);
       },
       { filter },
     );
+  }
+
+  /**
+   * Internal delete logic (shared by deleteOne and deleteById)
+   */
+  private async deleteOneInternal(filter: Filter<TDoc>): Promise<boolean> {
+    const finalFilter = this.applyPolicies(filter);
+
+    // Get document for hooks and policies
+    const doc = await this.collection.findOne(finalFilter, {
+      session: this.ctx.session,
+    });
+    if (!doc) {
+      return false;
+    }
+
+    // Run before hooks
+    if (this.collectionDef._meta.hooks.beforeDelete) {
+      await this.collectionDef._meta.hooks.beforeDelete(this.ctx, doc as any);
+    }
+
+    // Check policies
+    if (this.collectionDef._meta.policies.canDelete) {
+      const allowed = await this.collectionDef._meta.policies.canDelete(this.ctx, doc as any);
+      if (!allowed) {
+        throw new Error('Delete not allowed by policy');
+      }
+    }
+
+    // Delete
+    const result = await this.collection.deleteOne(finalFilter, {
+      session: this.ctx.session,
+    });
+
+    // Run after hooks
+    if (result.deletedCount > 0 && this.collectionDef._meta.hooks.afterDelete) {
+      await this.collectionDef._meta.hooks.afterDelete(this.ctx, doc as any);
+    }
+
+    // Handle delete cascades
+    if (result.deletedCount > 0) {
+      await this.handleDeleteCascades(doc as TDoc);
+    }
+
+    return result.deletedCount > 0;
   }
 
   /**

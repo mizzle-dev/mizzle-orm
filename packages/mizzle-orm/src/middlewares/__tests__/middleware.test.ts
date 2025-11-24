@@ -445,7 +445,7 @@ describe('Middleware System', () => {
       // Delete
       await db().users.deleteById(user._id);
 
-      expect(operations).toEqual(['create', 'findOne', 'findById', 'findMany', 'count', 'updateById', 'delete']);
+      expect(operations).toEqual(['create', 'findOne', 'findById', 'findMany', 'count', 'updateById', 'deleteById']);
 
       await db.close();
     });
