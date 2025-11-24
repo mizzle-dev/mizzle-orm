@@ -636,7 +636,7 @@ describe('Built-in Middlewares', () => {
           dbName: 'test',
           schema,
           middlewares: [
-            onOperations(['create', 'update'], async (ctx, next) => {
+            onOperations(['create', 'updateById'], async (ctx, next) => {
               executedOperations.push(ctx.operation);
               return next();
             }),
