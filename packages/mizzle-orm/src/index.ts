@@ -1,6 +1,6 @@
 /**
  * Mizzle ORM - MongoDB ORM with exceptional DX
- * @module mizzle-orm
+ * @module @mizzle-dev/orm
  */
 
 // Core exports

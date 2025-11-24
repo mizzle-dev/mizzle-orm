@@ -71,7 +71,7 @@ const posts = mongoCollection('posts', {
 Use the Refresh API to populate embeds in all existing documents.
 
 ```typescript
-import { mizzle, defineSchema } from 'mizzle-orm';
+import { mizzle, defineSchema } from '@mizzle-dev/orm';
 
 const schema = defineSchema({ users, posts });
 const db = await mizzle({

@@ -2,7 +2,7 @@
 
 A MongoDB ORM with exceptional developer experience, built for TypeScript.
 
-[![npm version](https://img.shields.io/npm/v/mizzle-orm.svg)](https://www.npmjs.com/package/mizzle-orm)
+[![npm version](https://img.shields.io/npm/v/@mizzle-dev/orm.svg)](https://www.npmjs.com/package/@mizzle-dev/orm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -18,11 +18,11 @@ A MongoDB ORM with exceptional developer experience, built for TypeScript.
 ## Installation
 
 ```bash
-npm install mizzle-orm mongodb
+npm install @mizzle-dev/orm mongodb
 # or
-pnpm add mizzle-orm mongodb
+pnpm add @mizzle-dev/orm mongodb
 # or
-yarn add mizzle-orm mongodb
+yarn add @mizzle-dev/orm mongodb
 ```
 
 **Requirements:** Node.js 18+ and MongoDB 5.0+
@@ -30,9 +30,9 @@ yarn add mizzle-orm mongodb
 ## Quick Start
 
 ```typescript
-import { mizzle, defineSchema, mongoCollection } from 'mizzle-orm';
-import { string, objectId, date } from 'mizzle-orm';
-import { lookup } from 'mizzle-orm';
+import { mizzle, defineSchema, mongoCollection } from '@mizzle-dev/orm';
+import { string, objectId, date } from '@mizzle-dev/orm';
+import { lookup } from '@mizzle-dev/orm';
 
 // Define collections
 const users = mongoCollection('users', {
@@ -107,7 +107,7 @@ Mizzle supports three relation strategies:
 Denormalize data for lightning-fast reads with optional auto-updates:
 
 ```typescript
-import { embed } from 'mizzle-orm';
+import { embed } from '@mizzle-dev/orm';
 
 const posts = mongoCollection('posts', {
   title: string(),
@@ -144,7 +144,7 @@ console.log(post.author.name); // Direct access, no join needed
 Query-time joins using MongoDB `$lookup`:
 
 ```typescript
-import { lookup } from 'mizzle-orm';
+import { lookup } from '@mizzle-dev/orm';
 
 author: lookup(users, {
   localField: 'authorId',
@@ -163,7 +163,7 @@ author: lookup(users, {
 Validate referential integrity:
 
 ```typescript
-import { reference } from 'mizzle-orm';
+import { reference } from '@mizzle-dev/orm';
 
 author: reference(users, {
   localField: 'authorId',
@@ -361,7 +361,7 @@ MIT © [Mizzle Dev](https://github.com/mizzle-dev)
 - [Documentation](https://orm.mizzle.dev)
 - [GitHub Repository](https://github.com/mizzle-dev/mizzle-orm)
 - [Issue Tracker](https://github.com/mizzle-dev/mizzle-orm/issues)
-- [NPM Package](https://www.npmjs.com/package/mizzle-orm)
+- [NPM Package](https://www.npmjs.com/package/@mizzle-dev/orm)
 
 ---
 

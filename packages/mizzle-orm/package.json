@@ -1,6 +1,6 @@
 {
-  "name": "mizzle-orm",
-  "version": "0.0.0",
+  "name": "@mizzle-dev/orm",
+  "version": "0.0.1",
   "description": "Mizzle ORM - MongoDB ORM with exceptional DX",
   "type": "module",
   "main": "./dist/index.js",

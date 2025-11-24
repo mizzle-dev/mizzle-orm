@@ -376,7 +376,7 @@ export interface CollectionOptions<
 > {
   indexes?: IndexDefinitionFn<TSchema>;
   searchIndexes?: any; // TODO: Atlas Search index definitions
-  relations?: TRels; // Now accepts relation object directly (import { lookup, reference, embed } from 'mizzle-orm')
+  relations?: TRels;
   policies?: PolicyConfig<TSchema>;
   audit?: CollectionAuditConfig;
   hooks?: Hooks<TSchema>;
