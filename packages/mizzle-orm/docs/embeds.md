@@ -39,7 +39,7 @@ Embeds are ideal when:
 ### Simple Embed Example
 
 ```typescript
-import { mizzle, defineSchema, mongoCollection, string, objectId, embed } from 'mizzle-orm';
+import { mizzle, defineSchema, mongoCollection, string, objectId, embed } from '@mizzle-dev/orm';
 
 // Source collection
 const users = mongoCollection('users', {
@@ -167,7 +167,7 @@ const posts = mongoCollection(
 Embeds multiple documents from an array of IDs.
 
 ```typescript
-import { array } from 'mizzle-orm/schema';
+import { array } from '@mizzle-dev/orm/schema';
 
 const tags = mongoCollection('tags', {
   _id: objectId().internalId(),
@@ -229,7 +229,7 @@ console.log(post.tags);
 Merges embedded data into an existing object (no separate field).
 
 ```typescript
-import { object } from 'mizzle-orm/schema';
+import { object } from '@mizzle-dev/orm/schema';
 
 const directories = mongoCollection('directories', {
   _id: objectId().internalId(),
@@ -301,7 +301,7 @@ Use `embedIdField` to embed non-`_id` fields like public IDs.
 ### Example: Public ID Embeds
 
 ```typescript
-import { publicId } from 'mizzle-orm/schema';
+import { publicId } from '@mizzle-dev/orm/schema';
 
 const users = mongoCollection('users', {
   id: publicId('usr'),  // Public ID like "usr_abc123"

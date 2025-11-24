@@ -102,8 +102,8 @@ const workflows = mongoCollection('workflows', {
 ### Basic Forward Embed
 
 ```typescript
-import { mongoCollection, embed } from 'mizzle-orm';
-import { string, objectId } from 'mizzle-orm/fields';
+import { mongoCollection, embed } from '@mizzle-dev/orm';
+import { string, objectId } from '@mizzle-dev/orm/fields';
 
 // Source collection
 const authors = mongoCollection('authors', {
@@ -741,4 +741,3 @@ Use embeds with `keepFresh: true` for fast reads with automatic updates!
 **Next Steps:**
 - Check out [examples/](../examples/) for real-world use cases
 - Read the [API Reference](./api-reference.md)
-- Join our [Discord](https://discord.gg/mizzle) for help

@@ -1,8 +1,8 @@
 # Mizzle ORM
 
-> MongoDB ORM with Drizzle-inspired DX and Convex-like ergonomics
+> A MongoDB ORM with exceptional developer experience, built for TypeScript.
 
-[![npm version](https://img.shields.io/npm/v/mizzle-orm.svg)](https://www.npmjs.com/package/mizzle-orm)
+[![npm version](https://img.shields.io/npm/v/@mizzle-dev/orm.svg)](https://www.npmjs.com/package/@mizzle-dev/orm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Mizzle brings modern TypeScript DX to MongoDB with a clean, type-safe API inspired by Drizzle ORM, Convex and oRPC.
@@ -21,13 +21,13 @@ Mizzle brings modern TypeScript DX to MongoDB with a clean, type-safe API inspir
 ## Quick Start
 
 ```bash
-npm install mizzle-orm mongodb
+npm install @mizzle-dev/orm mongodb
 # or
-pnpm add mizzle-orm mongodb
+pnpm add @mizzle-dev/orm mongodb
 ```
 
 ```typescript
-import { mizzle, defineSchema, mongoCollection, objectId, publicId, string, date } from 'mizzle-orm';
+import { mizzle, defineSchema, mongoCollection, objectId, publicId, string, date } from '@mizzle-dev/orm';
 
 // Define your schema
 const users = mongoCollection(
@@ -88,7 +88,7 @@ await db().users.deleteById(alice.id);
 ### Type-Safe Schema Definition
 
 ```typescript
-import { objectId, publicId, string, date, array } from 'mizzle-orm';
+import { objectId, publicId, string, date, array } from '@mizzle-dev/orm';
 
 const users = mongoCollection('users', {
   _id: objectId().internalId(),

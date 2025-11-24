@@ -18,7 +18,7 @@ Mizzle ORM's middleware system allows you to intercept and modify database opera
 Apply middleware to all collections:
 
 ```typescript
-import { mizzle, loggingMiddleware, performanceMiddleware } from 'mizzle-orm';
+import { mizzle, loggingMiddleware, performanceMiddleware } from '@mizzle-dev/orm';
 
 const db = await mizzle({
   uri: process.env.MONGO_URI!,
@@ -36,7 +36,7 @@ const db = await mizzle({
 Apply middleware to specific collections:
 
 ```typescript
-import { mongoCollection, auditMiddleware } from 'mizzle-orm';
+import { mongoCollection, auditMiddleware } from '@mizzle-dev/orm';
 
 const users = mongoCollection(
   'users',
@@ -62,7 +62,7 @@ A middleware is a function that receives:
 2. **Next** (`() => Promise<TResult>`) - Function to call the next middleware or operation
 
 ```typescript
-import type { Middleware } from 'mizzle-orm';
+import type { Middleware } from '@mizzle-dev/orm';
 
 const myMiddleware: Middleware = async (ctx, next) => {
   // Before operation
@@ -142,7 +142,7 @@ await db().users.create({...});
 Log all database operations:
 
 ```typescript
-import { loggingMiddleware } from 'mizzle-orm';
+import { loggingMiddleware } from '@mizzle-dev/orm';
 
 loggingMiddleware({
   level: 'info',              // 'debug' | 'info' | 'warn' | 'error'
@@ -163,7 +163,7 @@ loggingMiddleware({
 Track query execution times and detect slow queries:
 
 ```typescript
-import { performanceMiddleware } from 'mizzle-orm';
+import { performanceMiddleware } from '@mizzle-dev/orm';
 
 performanceMiddleware({
   slowQueryThreshold: 1000,   // Warn if query takes > 1000ms
@@ -183,7 +183,7 @@ performanceMiddleware({
 Cache read operations to reduce database load:
 
 ```typescript
-import { cachingMiddleware, MemoryCacheStore } from 'mizzle-orm';
+import { cachingMiddleware, MemoryCacheStore } from '@mizzle-dev/orm';
 import Redis from 'ioredis';
 
 // Option 1: In-memory cache
@@ -219,7 +219,7 @@ cachingMiddleware({
 Log all write operations for compliance:
 
 ```typescript
-import { auditMiddleware } from 'mizzle-orm';
+import { auditMiddleware } from '@mizzle-dev/orm';
 
 auditMiddleware({
   store: {
@@ -250,7 +250,7 @@ auditMiddleware({
 Automatically retry failed operations:
 
 ```typescript
-import { retryMiddleware } from 'mizzle-orm';
+import { retryMiddleware } from '@mizzle-dev/orm';
 
 retryMiddleware({
   maxRetries: 3,
@@ -273,7 +273,7 @@ retryMiddleware({
 Validate data before write operations:
 
 ```typescript
-import { validationMiddleware, ValidationError } from 'mizzle-orm';
+import { validationMiddleware, ValidationError } from '@mizzle-dev/orm';
 import { z } from 'zod';
 
 const userSchema = z.object({
@@ -313,7 +313,7 @@ try {
 Combine multiple middlewares into one:
 
 ```typescript
-import { compose, loggingMiddleware, performanceMiddleware } from 'mizzle-orm';
+import { compose, loggingMiddleware, performanceMiddleware } from '@mizzle-dev/orm';
 
 const observability = compose(
   loggingMiddleware({ level: 'info' }),
@@ -331,7 +331,7 @@ const db = await mizzle({
 Conditionally apply middleware:
 
 ```typescript
-import { when } from 'mizzle-orm';
+import { when } from '@mizzle-dev/orm';
 
 const cacheInProduction = when(
   (ctx) => process.env.NODE_ENV === 'production',
@@ -344,7 +344,7 @@ const cacheInProduction = when(
 Apply middleware to specific operations:
 
 ```typescript
-import { onOperations, auditMiddleware } from 'mizzle-orm';
+import { onOperations, auditMiddleware } from '@mizzle-dev/orm';
 
 const auditWrites = onOperations(
   ['create', 'update', 'updateById', 'delete', 'deleteById'],
@@ -357,7 +357,7 @@ const auditWrites = onOperations(
 Apply middleware to read or write operations:
 
 ```typescript
-import { onReads, onWrites, cachingMiddleware, auditMiddleware } from 'mizzle-orm';
+import { onReads, onWrites, cachingMiddleware, auditMiddleware } from '@mizzle-dev/orm';
 
 const db = await mizzle({
   middlewares: [
@@ -373,7 +373,7 @@ const db = await mizzle({
 Apply middleware to specific collections:
 
 ```typescript
-import { onCollections, auditMiddleware } from 'mizzle-orm';
+import { onCollections, auditMiddleware } from '@mizzle-dev/orm';
 
 const auditSensitiveCollections = onCollections(
   ['users', 'payments', 'auth_tokens'],
@@ -386,7 +386,7 @@ const auditSensitiveCollections = onCollections(
 ### Basic Custom Middleware
 
 ```typescript
-import type { Middleware } from 'mizzle-orm';
+import type { Middleware } from '@mizzle-dev/orm';
 
 const requestIdMiddleware: Middleware = async (ctx, next) => {
   // Add request ID to context if not present
@@ -543,7 +543,7 @@ const queryRewritingMiddleware: Middleware = async (ctx, next) => {
 import { trace, context } from '@opentelemetry/api';
 
 const tracingMiddleware: Middleware = async (ctx, next) => {
-  const tracer = trace.getTracer('mizzle-orm');
+  const tracer = trace.getTracer('@mizzle-dev/orm');
 
   return tracer.startActiveSpan(
     `${ctx.collection}.${ctx.operation}`,
@@ -668,7 +668,7 @@ const myMiddleware: Middleware = async (ctx, next) => {
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import type { Middleware, MiddlewareContext } from 'mizzle-orm';
+import type { Middleware, MiddlewareContext } from '@mizzle-dev/orm';
 
 describe('myMiddleware', () => {
   it('should execute correctly', async () => {

@@ -28,8 +28,8 @@ Welcome to the Mizzle ORM documentation! This guide will help you understand and
 ### Basic Embed Example
 
 ```typescript
-import { mizzle, defineSchema, mongoCollection, embed } from 'mizzle-orm';
-import { string, objectId } from 'mizzle-orm';
+import { mizzle, defineSchema, mongoCollection, embed } from '@mizzle-dev/orm';
+import { string, objectId } from '@mizzle-dev/orm';
 
 const users = mongoCollection('users', {
   _id: objectId().internalId(),
