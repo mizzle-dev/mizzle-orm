@@ -57,5 +57,44 @@ export {
   generateUpdateSchema,
 } from './validation/zod-schema-generator';
 
+// Middlewares
+export {
+  loggingMiddleware,
+  performanceMiddleware,
+  cachingMiddleware,
+  auditMiddleware,
+  retryMiddleware,
+  validationMiddleware,
+  MemoryCacheStore,
+  ValidationError,
+  compose,
+  when,
+  onOperations,
+  onReads,
+  onWrites,
+  onCollections,
+} from './middlewares/index';
+
+export type {
+  Middleware,
+  MiddlewareContext,
+  Operation,
+  ReadOperation,
+  WriteOperation,
+} from './types/middleware';
+
+export type {
+  LoggingConfig,
+  PerformanceConfig,
+  CachingConfig,
+  AuditConfig,
+  RetryConfig,
+  ValidationConfig,
+  CacheStore,
+  AuditStore,
+  AuditLogEntry,
+  ValidationResult,
+} from './middlewares/index';
+
 // Utilities
 export { ObjectId } from 'mongodb';
