@@ -6,6 +6,7 @@ import type { MongoClient, ClientSession, ObjectId } from 'mongodb';
 import type { RelationTargets, CollectionDefinition } from './collection';
 import type { IncludeConfig, WithIncluded } from './include';
 import type { Filter, InferDocument, InferInsert, InferUpdate } from './inference';
+import type { Middleware } from './middleware';
 
 /**
  * User context for RLS and audit
@@ -44,16 +45,9 @@ export interface OrmContext {
 
 /**
  * Middleware function
+ * @deprecated Use Middleware from './middleware' instead for better type safety
  */
-export type OrmMiddleware = <TResult>(
-  ctx: OrmContext,
-  next: () => Promise<TResult>,
-  meta: {
-    collection: string;
-    operation: string;
-    args: unknown;
-  },
-) => Promise<TResult>;
+export type OrmMiddleware = Middleware;
 
 /**
  * Validation strategy
@@ -257,7 +251,7 @@ export interface MizzleConfig<TSchema extends Record<string, any> = Record<strin
   dbName: string;
   schema: TSchema;
 
-  middlewares?: OrmMiddleware[];
+  middlewares?: Middleware[];
   validation?: ValidationConfig;
   audit?: AuditOrmConfig;
   devGuardrails?: DevGuardrailsConfig;

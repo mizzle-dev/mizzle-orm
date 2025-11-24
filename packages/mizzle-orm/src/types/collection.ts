@@ -7,6 +7,7 @@ import type { SchemaDefinition } from './field';
 // import type { IndexConfig, AuditConfig } from './field'; // Used in field definitions
 import type { InferDocument, InferInsert, InferUpdate } from './inference';
 import type { OrmContext } from './orm';
+import type { Middleware } from './middleware';
 
 /**
  * Index definition function
@@ -379,6 +380,7 @@ export interface CollectionOptions<
   policies?: PolicyConfig<TSchema>;
   audit?: CollectionAuditConfig;
   hooks?: Hooks<TSchema>;
+  middlewares?: Middleware[];
 }
 
 /**
@@ -396,6 +398,7 @@ export interface CollectionMeta<
   policies: PolicyConfig<TSchema>;
   audit: CollectionAuditConfig;
   hooks: Hooks<TSchema>;
+  middlewares: Middleware[];
 }
 
 /**

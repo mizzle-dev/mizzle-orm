@@ -87,6 +87,9 @@ export function mongoCollection<
     enabled: false,
   };
 
+  // Middlewares
+  const middlewares = options.middlewares || [];
+
   // Search indexes (placeholder for now)
   const searchIndexes: any[] = [];
 
@@ -100,6 +103,7 @@ export function mongoCollection<
     policies,
     audit,
     hooks,
+    middlewares,
   };
 
   // Create collection definition

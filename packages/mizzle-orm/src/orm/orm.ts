@@ -198,6 +198,8 @@ async function createMongoOrm<TCollections extends Record<string, any>>(
         return new CollectionFacade(db, collectionDef, ctx, {
           reverseEmbedRegistry,
           deleteRegistry,
+          globalMiddlewares: config.middlewares || [],
+          collectionMiddlewares: collectionDef._meta.middlewares || [],
         });
       },
     }) as DbFacade<TCollections>;
