@@ -77,7 +77,7 @@ export interface MiddlewareContext<TDoc = any> {
   /**
    * Query options (sort, limit, include, etc.)
    */
-  options?: QueryOptions;
+  options?: QueryOptions<any>;
 
   /**
    * Original document before update/delete (when available)
