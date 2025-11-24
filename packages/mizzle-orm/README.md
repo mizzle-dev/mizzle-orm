@@ -25,7 +25,7 @@ pnpm add @mizzle-dev/orm mongodb
 yarn add @mizzle-dev/orm mongodb
 ```
 
-**Requirements:** Node.js 18+ and MongoDB 5.0+
+**Requirements:** Node.js 20+ and MongoDB driver 6.0+
 
 ## Quick Start
 

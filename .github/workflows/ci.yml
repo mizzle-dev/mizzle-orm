@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [20.x, 22.x]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +30,14 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'pnpm'
 
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            mongodb-binaries-${{ runner.os }}-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -41,6 +49,11 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Pre-download MongoDB binaries
+        run: |
+          node -e "const { MongoMemoryServer } = require('mongodb-memory-server'); MongoMemoryServer.create().then(m => m.stop());"
+        working-directory: packages/mizzle-orm
 
       - name: Test
         run: pnpm test

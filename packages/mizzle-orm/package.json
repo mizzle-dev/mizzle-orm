@@ -72,6 +72,6 @@
     "vitest": "^4.0.12"
   },
   "peerDependencies": {
-    "mongodb": ">=5.0.0"
+    "mongodb": ">=6.0.0"
   }
 }
