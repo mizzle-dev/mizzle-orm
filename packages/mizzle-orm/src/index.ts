@@ -17,6 +17,7 @@ export type {
   SSCollectionOptions,
   SSCollectionMeta,
   SSPublicIdConfig,
+  SSSoftDeleteConfig,
   ExtractSSDocument,
   ExtractSSInsert,
   ExtractSSUpdate,

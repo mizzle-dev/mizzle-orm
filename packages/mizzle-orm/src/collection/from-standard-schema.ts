@@ -23,6 +23,16 @@ export interface SSPublicIdConfig {
 }
 
 /**
+ * Normalized soft delete configuration
+ */
+export interface SSSoftDeleteConfig {
+  /**
+   * Field name to store the deletion timestamp (default: 'deletedAt')
+   */
+  field: string;
+}
+
+/**
  * Options for Standard Schema collections
  * Simplified options compared to field-builder collections since the schema handles validation
  */
@@ -36,9 +46,12 @@ export interface SSCollectionOptions {
   publicId?: string | { prefix: string; field?: string };
 
   /**
-   * Enable soft delete (adds deletedAt field)
+   * Enable soft delete (marks documents as deleted instead of removing them)
+   * Can be a boolean (uses 'deletedAt' as field name) or config object
+   * @example true → uses 'deletedAt' field
+   * @example { field: 'removedAt' } → uses 'removedAt' field
    */
-  softDelete?: boolean;
+  softDelete?: boolean | { field?: string };
 
   /**
    * Enable timestamps (adds createdAt, updatedAt fields)
@@ -74,6 +87,11 @@ export interface SSCollectionMeta<T extends StandardSchemaV1<any, any>> {
    * Normalized public ID configuration (if publicId option was specified)
    */
   publicIdConfig?: SSPublicIdConfig;
+
+  /**
+   * Normalized soft delete configuration (if softDelete option was specified)
+   */
+  softDeleteConfig?: SSSoftDeleteConfig;
 
   /**
    * Middlewares applied to this collection
@@ -231,12 +249,27 @@ export function fromStandardSchema<T extends StandardSchemaV1<any, any>>(
     }
   }
 
+  // Normalize softDelete config
+  let softDeleteConfig: SSSoftDeleteConfig | undefined;
+  if (options.softDelete) {
+    if (typeof options.softDelete === 'boolean') {
+      softDeleteConfig = {
+        field: 'deletedAt', // Default field name
+      };
+    } else {
+      softDeleteConfig = {
+        field: options.softDelete.field || 'deletedAt', // Default field name if not specified
+      };
+    }
+  }
+
   // Build metadata
   const meta: SSCollectionMeta<T> = {
     name,
     schema,
     options,
     publicIdConfig,
+    softDeleteConfig,
     middlewares: options.middlewares || [],
   };
 

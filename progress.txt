@@ -6,7 +6,7 @@ Started: 2026-02-11T21:23:00Z
 ## Codebase Patterns
 - Monorepo with turbo, main package at `packages/mizzle-orm`
 - Build: `pnpm build` → tsup (generates CJS/ESM/DTS)
-- Test: `pnpm test` → vitest (230+ tests, now 306)
+- Test: `pnpm test` → vitest (230+ tests, now 333)
 - Typecheck: `pnpm typecheck` → tsc --noEmit
 - Type files live in `src/types/`, tests in `src/<module>/__tests__/`
 - vitest expectTypeOf available for type-level assertions
@@ -111,4 +111,32 @@ Started: 2026-02-11T21:23:00Z
   - SSValidationError helpers: paths getter, toJSON(), getIssuesAtPath()
   - Optional fields, enum validation
 - **Learnings:** For partial validation, run full validation then filter issues by paths present in update data. This allows partial updates while catching invalid field values. Import `ValidationIssue` type from validation-error.ts for type safety in filter callbacks.
+---
+
+## 2026-02-11 21:55 - US-005: Add publicId support for Standard Schema collections
+- Extended `SSCollectionOptions` to accept `publicId?: string | { prefix: string; field?: string }`
+- Added `SSPublicIdConfig` interface for normalized config
+- Added `publicIdConfig` to `SSCollectionMeta` (normalized at factory time)
+- Updated `fromStandardSchema` to normalize publicId options into publicIdConfig
+- Updated `CollectionFacade.applyDefaults` to generate publicId for SS collections using `generatePublicId` utility
+- Updated `CollectionFacade.getPublicIdField` to return SS collection's publicId field
+- Fixed `CollectionFacade.deleteOneInternal` for SS collections (null-safe hooks/policies access, skip cascades)
+- Exported `SSPublicIdConfig` from index.ts
+- Files changed: 
+  - src/collection/from-standard-schema.ts (SSPublicIdConfig, extended options, normalized config)
+  - src/query/collection-facade.ts (applyDefaults, getPublicIdField, deleteOneInternal)
+  - src/index.ts (export SSPublicIdConfig)
+  - src/collection/__tests__/standard-schema-public-id.test.ts (21 new tests)
+- Tests: 21 tests covering:
+  - fromStandardSchema publicId option (prefix string, object with prefix, object with prefix+field)
+  - Default field name 'id'
+  - Auto-generation of prefixed IDs on insert
+  - Custom field name support
+  - Unique ID generation
+  - findById with public ID (default field, custom field, ObjectId fallback)
+  - updateById and deleteById with public ID
+  - Integration with validation
+  - Combined options (softDelete, timestamps)
+  - Edge cases (empty prefix = no config, special chars, underscore in prefix)
+- **Learnings:** SS collections require null-safe access throughout CollectionFacade for hooks, policies, and cascades. PublicId default field is 'id' (not 'publicId') to match common API patterns.
 ---
