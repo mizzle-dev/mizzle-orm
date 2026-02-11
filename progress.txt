@@ -12,6 +12,8 @@ Started: 2026-02-11T21:23:00Z
 - vitest expectTypeOf available for type-level assertions
 - Zod is already a dependency (zod ^4.1.12)
 - Uses node:test style expect/describe/it from vitest
+- Collection definitions use phantom types for `$inferDocument`, `$inferInsert`, `$inferUpdate` - assigned `null as any`, never accessed at runtime
+- Use `_brand` literal type to distinguish collection types (e.g., `'CollectionDefinition'` vs `'SSCollectionDefinition'`)
 
 ---
 
@@ -50,4 +52,30 @@ Started: 2026-02-11T21:23:00Z
   - Integration tests with realistic schemas
   - vitest expectTypeOf assertions
 - **Learnings:** Use `HasIdProperty<T>` conditional to check for existing _id before adding ObjectId; Update types use output (post-transform) while Insert uses input (pre-transform)
+---
+
+## 2026-02-11 21:34 - US-003: Implement fromStandardSchema collection factory
+- Created `src/collection/from-standard-schema.ts` with:
+  - `fromStandardSchema<T extends StandardSchemaV1>(name, schema, options?)` factory function
+  - `SSCollectionDefinition<T>` type with `$inferDocument`, `$inferInsert`, `$inferUpdate` phantom types
+  - `SSCollectionOptions` interface (publicId, softDelete, timestamps, middlewares)
+  - `SSCollectionMeta<T>` for runtime metadata access
+  - `isSSCollectionDefinition()` type guard for distinguishing from regular collections
+  - `ExtractSSDocument/Insert/Update` helper types
+  - Runtime validation that schema is Standard Schema compliant (checks for `~standard` interface)
+- Exported all types and functions from `src/index.ts`
+- Files changed: src/collection/from-standard-schema.ts, src/collection/__tests__/from-standard-schema.test.ts, src/index.ts
+- Tests: Created 35 comprehensive tests covering:
+  - Basic factory with any StandardSchemaV1 schema (string, number, object, array)
+  - Error handling for non-compliant schemas
+  - Schema stored in definition for runtime validation access
+  - Options: publicId, softDelete, timestamps, combined, no options
+  - Type inference: $inferDocument adds _id, preserves custom _id, nested objects, transforms
+  - Type inference: $inferInsert uses input types, handles optional/default fields
+  - Type inference: $inferUpdate is Partial without _id, uses output types
+  - Extract helper types
+  - Type guard behavior
+  - Realistic user/post collection examples with runtime validation demo
+  - Edge cases: empty schema, deep nesting, unions, nullable, records
+- **Learnings:** Collection definitions use phantom types (`null as any`) for type inference helpers - they're never accessed at runtime. The `_brand` literal type pattern helps distinguish collection types.
 ---
