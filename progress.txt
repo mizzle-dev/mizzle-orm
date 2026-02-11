@@ -174,3 +174,32 @@ Started: 2026-02-11T21:23:00Z
   - src/collection/__tests__/standard-schema-timestamps.test.ts (20 new tests)
 - **Learnings:** Timestamps follow the same normalization pattern as publicId and softDelete configs. createdAt is set on insert only if not already provided (allows override). updatedAt is always set on update operations.
 ---
+
+## 2026-02-11 22:19 - US-008: Create fromZod convenience wrapper with defaults extraction
+- Created `src/collection/from-zod.ts` with:
+  - `fromZod(name, zodSchema, options)` factory function wrapping `fromStandardSchema`
+  - `ZodCollectionDefinition` and `ZodCollectionMeta` types with Zod-specific metadata
+  - `extractZodDefaults()` to extract `.default()` values from Zod schema
+  - `applyZodDefaults()` to apply extracted defaults on insert
+  - `ZodValidationError` class with `format()`, `flatten()`, `getFieldErrors()`, `errorFields`
+  - `validateWithZod()` for Zod-specific validation with better error messages
+  - `isZodSchema()` and `isZodCollectionDefinition()` type guards
+- Updated `CollectionFacade.validateWithStandardSchema` to use Zod-specific validation for Zod collections
+- Updated `CollectionFacade.applyDefaults` to apply extracted Zod defaults before validation
+- Exported all Zod utilities from `src/index.ts`
+- Files changed:
+  - src/collection/from-zod.ts (new file)
+  - src/query/collection-facade.ts (Zod-specific validation and defaults)
+  - src/index.ts (exports)
+  - src/collection/__tests__/from-zod.test.ts (51 new tests)
+- Tests: 51 tests covering:
+  - isZodSchema detection
+  - extractZodDefaults for primitives, objects, arrays, enums
+  - applyZodDefaults behavior
+  - validateWithZod success/failure/partial validation
+  - ZodValidationError formatting methods
+  - fromZod factory with options
+  - Type inference
+  - Integration with CollectionFacade (defaults, validation, publicId, timestamps, softDelete)
+- **Learnings:** Zod 4.x uses `_def.type === 'default'` with `defaultValue` directly (not a function), differs from Zod 3.x which uses `_def.typeName === 'ZodDefault'` with function.
+---
