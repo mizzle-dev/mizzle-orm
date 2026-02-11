@@ -140,3 +140,22 @@ Started: 2026-02-11T21:23:00Z
   - Edge cases (empty prefix = no config, special chars, underscore in prefix)
 - **Learnings:** SS collections require null-safe access throughout CollectionFacade for hooks, policies, and cascades. PublicId default field is 'id' (not 'publicId') to match common API patterns.
 ---
+
+## 2026-02-11 22:01 - US-006: Add softDelete support for Standard Schema collections
+- Extended `SSCollectionOptions.softDelete` to accept `boolean | { field?: string }`
+- Added `SSSoftDeleteConfig` interface for normalized config (default field: 'deletedAt')
+- Added `softDeleteConfig` to `SSCollectionMeta` (normalized at factory time)
+- Updated `fromStandardSchema` to normalize softDelete options
+- Updated `getSoftDeleteField()` in CollectionFacade to check SS collections
+- Added `applySoftDeleteFilter()` helper method to exclude soft-deleted documents
+- Updated `findById`, `findOne`, `findMany`, `count` to apply soft delete filter
+- `softDelete(id)` sets the timestamp field; `restore(id)` clears it
+- Default queries exclude documents where soft delete field is set
+- Exported `SSSoftDeleteConfig` from index.ts
+- Files changed: 
+  - src/collection/from-standard-schema.ts (SSSoftDeleteConfig, extended options, normalized config)
+  - src/query/collection-facade.ts (getSoftDeleteField, applySoftDeleteFilter, query methods)
+  - src/index.ts (export SSSoftDeleteConfig)
+  - src/collection/__tests__/standard-schema-soft-delete.test.ts (22 new tests)
+- **Learnings:** Soft delete filtering needs to apply to all read queries (findById, findOne, findMany, count). The filter uses `$or` to match both null and non-existent fields to include non-deleted documents.
+---

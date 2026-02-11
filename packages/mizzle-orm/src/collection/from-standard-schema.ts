@@ -33,6 +33,21 @@ export interface SSSoftDeleteConfig {
 }
 
 /**
+ * Normalized timestamps configuration
+ */
+export interface SSTimestampsConfig {
+  /**
+   * Field name to store creation timestamp (default: 'createdAt')
+   */
+  createdAt: string;
+
+  /**
+   * Field name to store update timestamp (default: 'updatedAt')
+   */
+  updatedAt: string;
+}
+
+/**
  * Options for Standard Schema collections
  * Simplified options compared to field-builder collections since the schema handles validation
  */
@@ -54,9 +69,12 @@ export interface SSCollectionOptions {
   softDelete?: boolean | { field?: string };
 
   /**
-   * Enable timestamps (adds createdAt, updatedAt fields)
+   * Enable timestamps (auto-manages createdAt and updatedAt fields)
+   * Can be a boolean (uses default field names) or config object with custom names
+   * @example true → uses 'createdAt' and 'updatedAt' fields
+   * @example { createdAt: 'created', updatedAt: 'modified' } → custom field names
    */
-  timestamps?: boolean;
+  timestamps?: boolean | { createdAt?: string; updatedAt?: string };
 
   /**
    * Custom middlewares for this collection
@@ -92,6 +110,11 @@ export interface SSCollectionMeta<T extends StandardSchemaV1<any, any>> {
    * Normalized soft delete configuration (if softDelete option was specified)
    */
   softDeleteConfig?: SSSoftDeleteConfig;
+
+  /**
+   * Normalized timestamps configuration (if timestamps option was specified)
+   */
+  timestampsConfig?: SSTimestampsConfig;
 
   /**
    * Middlewares applied to this collection
@@ -263,6 +286,22 @@ export function fromStandardSchema<T extends StandardSchemaV1<any, any>>(
     }
   }
 
+  // Normalize timestamps config
+  let timestampsConfig: SSTimestampsConfig | undefined;
+  if (options.timestamps) {
+    if (typeof options.timestamps === 'boolean') {
+      timestampsConfig = {
+        createdAt: 'createdAt', // Default field name
+        updatedAt: 'updatedAt', // Default field name
+      };
+    } else {
+      timestampsConfig = {
+        createdAt: options.timestamps.createdAt || 'createdAt',
+        updatedAt: options.timestamps.updatedAt || 'updatedAt',
+      };
+    }
+  }
+
   // Build metadata
   const meta: SSCollectionMeta<T> = {
     name,
@@ -270,6 +309,7 @@ export function fromStandardSchema<T extends StandardSchemaV1<any, any>>(
     options,
     publicIdConfig,
     softDeleteConfig,
+    timestampsConfig,
     middlewares: options.middlewares || [],
   };
 
