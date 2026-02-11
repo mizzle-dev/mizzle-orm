@@ -50,6 +50,9 @@ export type { OrmContext, Mizzle, MizzleConfig } from './types/orm';
 
 export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/include';
 
+// Standard Schema integration
+export type { StandardSchemaV1, IsStandardSchema, InferSSInput, InferSSOutput } from './types/standard-schema';
+
 // Validation
 export {
   generateDocumentSchema,
