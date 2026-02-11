@@ -7,6 +7,38 @@
 export { mizzle, defineSchema } from './orm/orm';
 export { mongoCollection } from './collection/collection';
 
+// Standard Schema collection factory
+export {
+  fromStandardSchema,
+  isSSCollectionDefinition,
+} from './collection/from-standard-schema';
+export type {
+  SSCollectionDefinition,
+  SSCollectionOptions,
+  SSCollectionMeta,
+  SSPublicIdConfig,
+  SSSoftDeleteConfig,
+  SSTimestampsConfig,
+  ExtractSSDocument,
+  ExtractSSInsert,
+  ExtractSSUpdate,
+} from './collection/from-standard-schema';
+
+// Zod-specific collection factory
+export {
+  fromZod,
+  isZodSchema,
+  isZodCollectionDefinition,
+  extractZodDefaults,
+  applyZodDefaults,
+  validateWithZod,
+  ZodValidationError,
+} from './collection/from-zod';
+export type {
+  ZodCollectionDefinition,
+  ZodCollectionMeta,
+} from './collection/from-zod';
+
 // Relation factory functions
 export { lookup, reference, embed } from './collection/relations';
 
@@ -49,6 +81,14 @@ export type { CollectionDefinition, CollectionMeta } from './types/collection';
 export type { OrmContext, Mizzle, MizzleConfig } from './types/orm';
 
 export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/include';
+
+// Standard Schema integration
+export type { StandardSchemaV1, IsStandardSchema, InferSSInput, InferSSOutput } from './types/standard-schema';
+export type { InferSSDocument, InferSSInsert, InferSSUpdate } from './types/standard-schema-inference';
+
+// Standard Schema validation errors
+export { SSValidationError } from './errors/validation-error';
+export type { ValidationIssue } from './errors/validation-error';
 
 // Validation
 export {

@@ -8,6 +8,11 @@ import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
 import type { Filter } from '../types/inference';
 import type { Middleware, MiddlewareContext, Operation } from '../types/middleware';
+import type { SSCollectionDefinition } from '../collection/from-standard-schema';
+import { isSSCollectionDefinition } from '../collection/from-standard-schema';
+import { isZodCollectionDefinition, validateWithZod, applyZodDefaults } from '../collection/from-zod';
+import type { ZodCollectionDefinition } from '../collection/from-zod';
+import { SSValidationError, type ValidationIssue } from '../errors/validation-error';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -76,6 +81,74 @@ export class CollectionFacade<
   }
 
   /**
+   * Validate data against Standard Schema if this collection uses one
+   * Does nothing for regular field-builder collections (backward compatible)
+   * 
+   * For Zod collections (created with fromZod), uses Zod's native validation
+   * for better error messages.
+   * 
+   * @param data - The data to validate
+   * @param options - Validation options
+   * @param options.partial - If true, skip validation (for partial updates)
+   * @throws SSValidationError or ZodValidationError if validation fails
+   */
+  private async validateWithStandardSchema(
+    data: unknown,
+    options: { partial?: boolean } = {},
+  ): Promise<void> {
+    // Skip validation if not a Standard Schema collection
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      return;
+    }
+
+    // Use Zod-specific validation for Zod collections (better error formatting)
+    if (isZodCollectionDefinition(this.collectionDef)) {
+      const zodCollectionDef = this.collectionDef as unknown as ZodCollectionDefinition<any>;
+      const schema = zodCollectionDef._meta.zodSchema;
+      // validateWithZod throws ZodValidationError on failure
+      validateWithZod(schema, data, options);
+      return;
+    }
+
+    const ssCollectionDef = this.collectionDef as unknown as SSCollectionDefinition<any>;
+    const schema = ssCollectionDef._schema;
+
+    // Call Standard Schema's validate method
+    const result = await schema['~standard'].validate(data);
+
+    // Check for validation issues
+    if (result.issues && result.issues.length > 0) {
+      if (options.partial) {
+        // For partial validation (updates), only report issues for fields present in the data.
+        // This allows updates like { name: 'New Name' } without failing due to missing email.
+        // But if name itself is invalid, we catch it.
+        const updateKeys = typeof data === 'object' && data !== null
+          ? new Set(Object.keys(data as object))
+          : new Set<string>();
+
+        const relevantIssues = result.issues.filter((issue: ValidationIssue) => {
+          // If no path, it's a top-level structural issue - skip for partial validation
+          if (!issue.path || issue.path.length === 0) {
+            return false;
+          }
+
+          // Check if the first path segment is a key in our update data
+          const firstSegment = issue.path[0];
+          return updateKeys.has(String(firstSegment));
+        });
+
+        if (relevantIssues.length > 0) {
+          throw new SSValidationError(relevantIssues);
+        }
+        // No relevant issues for the fields we're updating - validation passed
+        return;
+      }
+
+      throw new SSValidationError(result.issues);
+    }
+  }
+
+  /**
    * Execute an operation with middleware chain
    * @template TResult - The return type of the operation (preserved through the chain)
    */
@@ -118,7 +191,8 @@ export class CollectionFacade<
       async () => {
         const filter = this.buildIdFilter(id);
         // Call the inner logic of findOne directly to avoid double middleware execution
-        const finalFilter = this.applyPolicies(filter);
+        const policyFilter = this.applyPolicies(filter);
+        const finalFilter = this.applySoftDeleteFilter(policyFilter);
 
         // If include is specified, use aggregation pipeline
         if (options?.include) {
@@ -161,7 +235,8 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'findOne',
       async () => {
-        const finalFilter = this.applyPolicies(filter);
+        const policyFilter = this.applyPolicies(filter);
+        const finalFilter = this.applySoftDeleteFilter(policyFilter);
 
         // If include is specified, use aggregation pipeline
         if (options?.include) {
@@ -207,7 +282,8 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'findMany',
       async () => {
-        const finalFilter = this.applyPolicies(filter);
+        const policyFilter = this.applyPolicies(filter);
+        const finalFilter = this.applySoftDeleteFilter(policyFilter);
 
         // If include is specified, use aggregation pipeline
         if (options?.include) {
@@ -276,7 +352,8 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'count',
       async () => {
-        const finalFilter = this.applyPolicies(filter);
+        const policyFilter = this.applyPolicies(filter);
+        const finalFilter = this.applySoftDeleteFilter(policyFilter);
         return this.collection.countDocuments(finalFilter, {
           session: this.ctx.session,
         });
@@ -292,28 +369,34 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'create',
       async () => {
+        // Validate against Standard Schema if applicable (throws SSValidationError on failure)
+        await this.validateWithStandardSchema(data);
+
         // Apply defaults and auto-generated fields
         const doc = await this.applyDefaults(data as any);
 
-        // Run before hooks
+        // Run before hooks (SS collections don't have hooks)
         let finalDoc = doc;
-        if (this.collectionDef._meta.hooks.beforeInsert) {
-          finalDoc = await this.collectionDef._meta.hooks.beforeInsert(this.ctx, finalDoc);
+        const hooks = (this.collectionDef._meta as any).hooks;
+        if (hooks?.beforeInsert) {
+          finalDoc = await hooks.beforeInsert(this.ctx, finalDoc);
         }
 
-        // Check policies
-        if (this.collectionDef._meta.policies.canInsert) {
-          const allowed = await this.collectionDef._meta.policies.canInsert(this.ctx, finalDoc);
+        // Check policies (SS collections don't have policies)
+        const policies = (this.collectionDef._meta as any).policies;
+        if (policies?.canInsert) {
+          const allowed = await policies.canInsert(this.ctx, finalDoc);
           if (!allowed) {
             throw new Error('Insert not allowed by policy');
           }
         }
 
-        // Validate references
-        await this.relationHelper.validateReferences(finalDoc as any);
-
-        // Process forward embeds (fetch and embed referenced data)
-        finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
+        // Validate references (skip for SS collections - they don't have relations yet)
+        if (!isSSCollectionDefinition(this.collectionDef)) {
+          await this.relationHelper.validateReferences(finalDoc as any);
+          // Process forward embeds (fetch and embed referenced data)
+          finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
+        }
 
         // Insert
         const result = await this.collection.insertOne(finalDoc as any, {
@@ -326,8 +409,8 @@ export class CollectionFacade<
         } as unknown as TDoc;
 
         // Run after hooks
-        if (this.collectionDef._meta.hooks.afterInsert) {
-          await this.collectionDef._meta.hooks.afterInsert(this.ctx, inserted);
+        if (hooks?.afterInsert) {
+          await hooks.afterInsert(this.ctx, inserted);
         }
 
         return inserted;
@@ -367,6 +450,10 @@ export class CollectionFacade<
    * Internal update logic (shared by updateOne and updateById)
    */
   private async updateOneInternal(filter: Filter<TDoc>, data: TUpdate): Promise<TDoc | null> {
+    // Note: Updates are partial and won't match the full schema
+    // Skip Standard Schema validation for updates
+    await this.validateWithStandardSchema(data, { partial: true });
+
     const finalFilter = this.applyPolicies(filter);
 
     // Get old document for hooks and policies
@@ -380,19 +467,21 @@ export class CollectionFacade<
     // Apply update timestamp
     const updateData = this.applyUpdateTimestamps(data as any);
 
-    // Run before hooks
+    // Run before hooks (SS collections don't have hooks)
     let finalUpdate = updateData;
-    if (this.collectionDef._meta.hooks.beforeUpdate) {
-      finalUpdate = await this.collectionDef._meta.hooks.beforeUpdate(
+    const hooks = (this.collectionDef._meta as any).hooks;
+    if (hooks?.beforeUpdate) {
+      finalUpdate = await hooks.beforeUpdate(
         this.ctx,
         oldDoc as any,
         updateData,
       );
     }
 
-    // Check policies
-    if (this.collectionDef._meta.policies.canUpdate) {
-      const allowed = await this.collectionDef._meta.policies.canUpdate(
+    // Check policies (SS collections don't have policies)
+    const policies = (this.collectionDef._meta as any).policies;
+    if (policies?.canUpdate) {
+      const allowed = await policies.canUpdate(
         this.ctx,
         oldDoc as any,
         finalUpdate,
@@ -402,11 +491,11 @@ export class CollectionFacade<
       }
     }
 
-    // Validate references
-    await this.relationHelper.validateReferences(finalUpdate as any);
-
-    // Process forward embeds (fetch and embed referenced data)
-    finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+    // Validate references and process embeds (skip for SS collections)
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      await this.relationHelper.validateReferences(finalUpdate as any);
+      finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+    }
 
     // Update
     const result = await this.collection.findOneAndUpdate(
@@ -423,12 +512,14 @@ export class CollectionFacade<
     }
 
     // Run after hooks
-    if (this.collectionDef._meta.hooks.afterUpdate) {
-      await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
+    if (hooks?.afterUpdate) {
+      await hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
     }
 
-    // Propagate reverse embeds if this collection is a source for any embeds
-    await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
+    // Propagate reverse embeds if this collection is a source for any embeds (skip for SS collections)
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
+    }
 
     return result as TDoc;
   }
@@ -440,6 +531,10 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'updateMany',
       async () => {
+        // Note: Updates are partial and won't match the full schema
+        // Skip Standard Schema validation for updates
+        await this.validateWithStandardSchema(data, { partial: true });
+
         const finalFilter = this.applyPolicies(filter);
         const updateData = this.applyUpdateTimestamps(data as any);
 
@@ -494,14 +589,16 @@ export class CollectionFacade<
       return false;
     }
 
-    // Run before hooks
-    if (this.collectionDef._meta.hooks.beforeDelete) {
-      await this.collectionDef._meta.hooks.beforeDelete(this.ctx, doc as any);
+    // Run before hooks (SS collections don't have hooks)
+    const hooks = (this.collectionDef._meta as any).hooks;
+    if (hooks?.beforeDelete) {
+      await hooks.beforeDelete(this.ctx, doc as any);
     }
 
-    // Check policies
-    if (this.collectionDef._meta.policies.canDelete) {
-      const allowed = await this.collectionDef._meta.policies.canDelete(this.ctx, doc as any);
+    // Check policies (SS collections don't have policies)
+    const policies = (this.collectionDef._meta as any).policies;
+    if (policies?.canDelete) {
+      const allowed = await policies.canDelete(this.ctx, doc as any);
       if (!allowed) {
         throw new Error('Delete not allowed by policy');
       }
@@ -512,13 +609,13 @@ export class CollectionFacade<
       session: this.ctx.session,
     });
 
-    // Run after hooks
-    if (result.deletedCount > 0 && this.collectionDef._meta.hooks.afterDelete) {
-      await this.collectionDef._meta.hooks.afterDelete(this.ctx, doc as any);
+    // Run after hooks (SS collections don't have hooks)
+    if (result.deletedCount > 0 && hooks?.afterDelete) {
+      await hooks.afterDelete(this.ctx, doc as any);
     }
 
-    // Handle delete cascades
-    if (result.deletedCount > 0) {
+    // Handle delete cascades (skip for SS collections - they don't have relations yet)
+    if (result.deletedCount > 0 && !isSSCollectionDefinition(this.collectionDef)) {
       await this.handleDeleteCascades(doc as TDoc);
     }
 
@@ -637,10 +734,11 @@ export class CollectionFacade<
    * Apply policy filters to a query filter
    */
   private applyPolicies(filter: Filter<TDoc>): Filter<TDoc> {
-    const policies = this.collectionDef._meta.policies;
+    // SS collections don't have policies
+    const policies = (this.collectionDef._meta as any).policies;
 
     // Apply read filter
-    if (policies.readFilter) {
+    if (policies?.readFilter) {
       const policyFilter = policies.readFilter(this.ctx);
       return {
         $and: [filter, policyFilter],
@@ -651,9 +749,73 @@ export class CollectionFacade<
   }
 
   /**
+   * Apply soft delete filter to exclude soft-deleted documents
+   * For SS collections with softDelete enabled, excludes documents where deletedAt is set
+   */
+  private applySoftDeleteFilter(filter: Filter<TDoc>): Filter<TDoc> {
+    // Only apply for SS collections with soft delete configured
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      return filter;
+    }
+
+    const ssMeta = (this.collectionDef as unknown as SSCollectionDefinition<any>)._meta;
+    if (!ssMeta.softDeleteConfig) {
+      return filter;
+    }
+
+    const softDeleteField = ssMeta.softDeleteConfig.field;
+
+    // Exclude documents where the soft delete field is set (not null/undefined)
+    const softDeleteFilter = {
+      $or: [
+        { [softDeleteField]: null },
+        { [softDeleteField]: { $exists: false } },
+      ],
+    };
+
+    return {
+      $and: [filter, softDeleteFilter],
+    } as Filter<TDoc>;
+  }
+
+  /**
    * Apply default values and generate auto-fields
+   * Note: For Standard Schema collections, defaults are handled by the schema itself
+   * Exceptions: publicId and timestamps are auto-generated by the ORM for SS collections
    */
   private async applyDefaults(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // Standard Schema collections handle defaults through the schema (e.g., Zod .default())
+    // Exceptions: publicId and createdAt are generated by the ORM
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      let result = { ...data };
+      const ssMeta = (this.collectionDef as unknown as SSCollectionDefinition<any>)._meta;
+      
+      // For Zod collections, apply extracted defaults before validation
+      // This ensures defaults are applied even for deeply nested schemas
+      if (isZodCollectionDefinition(this.collectionDef)) {
+        const zodMeta = (this.collectionDef as unknown as ZodCollectionDefinition<any>)._meta;
+        result = applyZodDefaults(result, zodMeta.defaults);
+      }
+      
+      // Generate publicId if configured and not already provided
+      if (ssMeta.publicIdConfig) {
+        const { prefix, field } = ssMeta.publicIdConfig;
+        if (!(field in result) || result[field] === undefined) {
+          result[field] = generatePublicId(prefix);
+        }
+      }
+
+      // Set createdAt timestamp if timestamps are configured and not already provided
+      if (ssMeta.timestampsConfig) {
+        const { createdAt } = ssMeta.timestampsConfig;
+        if (!(createdAt in result) || result[createdAt] === undefined) {
+          result[createdAt] = new Date();
+        }
+      }
+      
+      return result;
+    }
+
     const schema = this.collectionDef._schema;
     const result = { ...data };
 
@@ -691,8 +853,23 @@ export class CollectionFacade<
 
   /**
    * Apply update timestamps (onUpdateNow fields)
+   * For Standard Schema collections with timestamps config, sets updatedAt field
    */
   private applyUpdateTimestamps(data: Record<string, unknown>): Record<string, unknown> {
+    // Standard Schema collections use timestampsConfig for update timestamps
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      const ssMeta = (this.collectionDef as unknown as SSCollectionDefinition<any>)._meta;
+      
+      if (ssMeta.timestampsConfig) {
+        return {
+          ...data,
+          [ssMeta.timestampsConfig.updatedAt]: new Date(),
+        };
+      }
+      
+      return { ...data };
+    }
+
     const schema = this.collectionDef._schema;
     const result = { ...data };
 
@@ -711,6 +888,13 @@ export class CollectionFacade<
    * Get the public ID field name if configured
    */
   private getPublicIdField(): string | null {
+    // Check if this is a Standard Schema collection with publicId config
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      const ssMeta = (this.collectionDef as unknown as SSCollectionDefinition<any>)._meta;
+      return ssMeta.publicIdConfig?.field ?? null;
+    }
+
+    // For regular field-builder collections, check schema
     const schema = this.collectionDef._schema;
     for (const [fieldName, fieldBuilder] of Object.entries(schema)) {
       if (fieldBuilder._config.isPublicId) {
@@ -724,6 +908,13 @@ export class CollectionFacade<
    * Get the soft delete field name if configured
    */
   private getSoftDeleteField(): string | null {
+    // Check if this is a Standard Schema collection with softDelete config
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      const ssMeta = (this.collectionDef as unknown as SSCollectionDefinition<any>)._meta;
+      return ssMeta.softDeleteConfig?.field ?? null;
+    }
+
+    // For regular field-builder collections, check schema
     const schema = this.collectionDef._schema;
     for (const [fieldName, fieldBuilder] of Object.entries(schema)) {
       if (fieldBuilder._config.isSoftDeleteFlag) {
