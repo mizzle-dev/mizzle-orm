@@ -25,6 +25,33 @@ const posts = await db().posts.findMany({}, {
 - Using context for multi-tenancy
 - Transactions
 
+### [standard-schema-zod.ts](./standard-schema-zod.ts)
+**Standard Schema with Zod** - Use Zod schemas instead of field builders.
+
+```typescript
+import { z } from 'zod';
+import { fromZod } from '@mizzle-dev/orm';
+
+const userSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  role: z.enum(['user', 'admin']).default('user'),
+});
+
+const users = fromZod('users', userSchema, {
+  publicId: 'user',
+  timestamps: true,
+});
+```
+
+**Covers:**
+- Defining collections with Zod schemas
+- Automatic default extraction
+- Validation with detailed error messages
+- Transforms support
+- Public ID, soft delete, and timestamps
+- Migration guide from field builders
+
 ## Comprehensive Examples
 
 ### [mizzle-api-example.ts](./mizzle-api-example.ts)

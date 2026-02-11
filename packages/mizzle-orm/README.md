@@ -260,6 +260,166 @@ posts[0].author?.organization?.name // string | undefined
 posts[0].comments[0]?.user?.email // string | undefined
 ```
 
+## Standard Schema Support
+
+Mizzle supports [Standard Schema](https://standardschema.dev/), allowing you to define collections using validation libraries like **Zod**, **Valibot**, or **ArkType** instead of the built-in field builders.
+
+### Quick Start with Zod
+
+```typescript
+import { z } from 'zod';
+import { mizzle, defineSchema, fromZod } from '@mizzle-dev/orm';
+
+// Define schema with Zod - full validation power!
+const userSchema = z.object({
+  email: z.string().email('Must be a valid email'),
+  name: z.string().min(1, 'Name is required'),
+  role: z.enum(['user', 'admin']).default('user'),
+  age: z.number().int().min(0).optional(),
+});
+
+// Create collection from Zod schema
+const users = fromZod('users', userSchema, {
+  publicId: 'user',      // Generates 'user_abc123' style IDs
+  softDelete: true,      // Soft delete support
+  timestamps: true,      // Auto createdAt/updatedAt
+});
+
+// Type inference works automatically
+type UserDoc = typeof users.$inferDocument;
+// { _id: ObjectId; email: string; name: string; role: 'user' | 'admin'; age?: number; id: string; createdAt: Date; updatedAt: Date }
+
+type UserInsert = typeof users.$inferInsert;
+// { email: string; name: string; role?: 'user' | 'admin'; age?: number } (defaults are optional)
+
+// Use in your schema
+const schema = defineSchema({ users });
+const db = await mizzle({ uri: '...', dbName: 'myapp', schema });
+
+// Defaults are applied automatically
+const user = await db().users.create({
+  email: 'alice@example.com',
+  name: 'Alice',
+  // role defaults to 'user'
+});
+```
+
+### fromStandardSchema vs fromZod
+
+| Function | Use Case |
+|----------|----------|
+| `fromZod` | Zod schemas - extracts `.default()` values, better error formatting |
+| `fromStandardSchema` | Any Standard Schema library (Valibot, ArkType, etc.) |
+
+```typescript
+import { fromStandardSchema } from '@mizzle-dev/orm';
+import * as v from 'valibot';
+
+// Works with Valibot too
+const postSchema = v.object({
+  title: v.string(),
+  content: v.string(),
+});
+
+const posts = fromStandardSchema('posts', postSchema);
+```
+
+### Validation Errors
+
+Validation errors include detailed information:
+
+```typescript
+import { ZodValidationError, SSValidationError } from '@mizzle-dev/orm';
+
+try {
+  await db().users.create({ email: 'bad', name: '' });
+} catch (error) {
+  if (error instanceof ZodValidationError) {
+    // Zod-specific formatting
+    console.log(error.flatten());
+    // { formErrors: [], fieldErrors: { email: ['Must be a valid email'], name: ['Name is required'] } }
+    
+    console.log(error.errorFields); // ['email', 'name']
+    console.log(error.getFieldErrors('email')); // ['Must be a valid email']
+  }
+  
+  if (error instanceof SSValidationError) {
+    // Standard Schema format (works with any library)
+    console.log(error.issues);
+    // [{ message: '...', path: ['email'] }, ...]
+  }
+}
+```
+
+### Collection Options
+
+All options work with Standard Schema collections:
+
+```typescript
+const users = fromZod('users', userSchema, {
+  // Public ID generation
+  publicId: 'user',                    // prefix string
+  publicId: { prefix: 'usr', field: 'publicId' }, // custom field
+
+  // Soft delete
+  softDelete: true,                    // uses 'deletedAt' field
+  softDelete: { field: 'removedAt' },  // custom field
+
+  // Timestamps
+  timestamps: true,                    // uses 'createdAt' and 'updatedAt'
+  timestamps: { createdAt: 'created', updatedAt: 'modified' }, // custom fields
+
+  // Middlewares still work
+  middlewares: [loggingMiddleware()],
+});
+```
+
+### Migration from Field Builders
+
+Standard Schema collections work alongside field builder collections:
+
+```typescript
+// Before (field builders)
+import { mongoCollection, string, number } from '@mizzle-dev/orm';
+
+const users = mongoCollection('users', {
+  email: string(),
+  name: string(),
+  age: number().optional(),
+});
+
+// After (Zod)
+import { z } from 'zod';
+import { fromZod } from '@mizzle-dev/orm';
+
+const userSchema = z.object({
+  email: z.string().email(),
+  name: z.string(),
+  age: z.number().optional(),
+});
+
+const users = fromZod('users', userSchema);
+
+// Mix both in the same schema!
+const schema = defineSchema({
+  users,        // Standard Schema collection
+  posts,        // Field builder collection (if you have one)
+});
+```
+
+**Benefits of Standard Schema:**
+- Powerful validation (refinements, transforms, custom error messages)
+- Reuse schemas across your app (forms, APIs, etc.)
+- Ecosystem compatibility (Zod is widely used)
+- Runtime type safety with detailed errors
+
+**When to use field builders:**
+- Simple schemas without complex validation
+- Minimal dependencies preferred
+- Legacy code already using field builders
+
+See [examples/standard-schema-zod.ts](./examples/standard-schema-zod.ts) for a complete working example.
+
 ## When to Use Each Relation Type
 
 | Scenario | Best Choice | Why |
@@ -275,6 +435,7 @@ posts[0].comments[0]?.user?.email // string | undefined
 Check out the [examples directory](./examples) for comprehensive demonstrations:
 
 - [quickstart.ts](./examples/quickstart.ts) - 5-minute tutorial
+- [standard-schema-zod.ts](./examples/standard-schema-zod.ts) - Using Zod schemas for collections
 - [blog-with-embeds.ts](./examples/blog-with-embeds.ts) - Blog platform with auto-updating embeds
 - [ecommerce-orders.ts](./examples/ecommerce-orders.ts) - Order system with historical snapshots
 - [mizzle-api-example.ts](./examples/mizzle-api-example.ts) - Advanced usage patterns
