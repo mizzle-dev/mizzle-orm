@@ -8,6 +8,9 @@ import type { OrmContext, QueryOptions } from '../types/orm';
 import type { SchemaDefinition } from '../types/field';
 import type { Filter } from '../types/inference';
 import type { Middleware, MiddlewareContext, Operation } from '../types/middleware';
+import type { SSCollectionDefinition } from '../collection/from-standard-schema';
+import { isSSCollectionDefinition } from '../collection/from-standard-schema';
+import { SSValidationError } from '../errors/validation-error';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -73,6 +76,43 @@ export class CollectionFacade<
     this.deleteRegistry = options?.deleteRegistry;
     this.globalMiddlewares = options?.globalMiddlewares || [];
     this.collectionMiddlewares = options?.collectionMiddlewares || [];
+  }
+
+  /**
+   * Validate data against Standard Schema if this collection uses one
+   * Does nothing for regular field-builder collections (backward compatible)
+   * 
+   * @param data - The data to validate
+   * @param options - Validation options
+   * @param options.partial - If true, skip validation (for partial updates)
+   * @throws SSValidationError if validation fails
+   */
+  private async validateWithStandardSchema(
+    data: unknown,
+    options: { partial?: boolean } = {},
+  ): Promise<void> {
+    // Skip validation if not a Standard Schema collection
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      return;
+    }
+
+    // Skip validation for partial data (updates) since Standard Schema
+    // validates the entire structure but updates only contain changed fields
+    // Note: Future improvement could validate individual field types
+    if (options.partial) {
+      return;
+    }
+
+    const ssCollectionDef = this.collectionDef as unknown as SSCollectionDefinition<any>;
+    const schema = ssCollectionDef._schema;
+
+    // Call Standard Schema's validate method
+    const result = await schema['~standard'].validate(data);
+
+    // Check for validation issues
+    if (result.issues && result.issues.length > 0) {
+      throw new SSValidationError(result.issues);
+    }
   }
 
   /**
@@ -292,28 +332,34 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'create',
       async () => {
+        // Validate against Standard Schema if applicable (throws SSValidationError on failure)
+        await this.validateWithStandardSchema(data);
+
         // Apply defaults and auto-generated fields
         const doc = await this.applyDefaults(data as any);
 
-        // Run before hooks
+        // Run before hooks (SS collections don't have hooks)
         let finalDoc = doc;
-        if (this.collectionDef._meta.hooks.beforeInsert) {
-          finalDoc = await this.collectionDef._meta.hooks.beforeInsert(this.ctx, finalDoc);
+        const hooks = (this.collectionDef._meta as any).hooks;
+        if (hooks?.beforeInsert) {
+          finalDoc = await hooks.beforeInsert(this.ctx, finalDoc);
         }
 
-        // Check policies
-        if (this.collectionDef._meta.policies.canInsert) {
-          const allowed = await this.collectionDef._meta.policies.canInsert(this.ctx, finalDoc);
+        // Check policies (SS collections don't have policies)
+        const policies = (this.collectionDef._meta as any).policies;
+        if (policies?.canInsert) {
+          const allowed = await policies.canInsert(this.ctx, finalDoc);
           if (!allowed) {
             throw new Error('Insert not allowed by policy');
           }
         }
 
-        // Validate references
-        await this.relationHelper.validateReferences(finalDoc as any);
-
-        // Process forward embeds (fetch and embed referenced data)
-        finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
+        // Validate references (skip for SS collections - they don't have relations yet)
+        if (!isSSCollectionDefinition(this.collectionDef)) {
+          await this.relationHelper.validateReferences(finalDoc as any);
+          // Process forward embeds (fetch and embed referenced data)
+          finalDoc = (await this.relationHelper.processForwardEmbeds(finalDoc as any)) as any;
+        }
 
         // Insert
         const result = await this.collection.insertOne(finalDoc as any, {
@@ -326,8 +372,8 @@ export class CollectionFacade<
         } as unknown as TDoc;
 
         // Run after hooks
-        if (this.collectionDef._meta.hooks.afterInsert) {
-          await this.collectionDef._meta.hooks.afterInsert(this.ctx, inserted);
+        if (hooks?.afterInsert) {
+          await hooks.afterInsert(this.ctx, inserted);
         }
 
         return inserted;
@@ -367,6 +413,10 @@ export class CollectionFacade<
    * Internal update logic (shared by updateOne and updateById)
    */
   private async updateOneInternal(filter: Filter<TDoc>, data: TUpdate): Promise<TDoc | null> {
+    // Note: Updates are partial and won't match the full schema
+    // Skip Standard Schema validation for updates
+    await this.validateWithStandardSchema(data, { partial: true });
+
     const finalFilter = this.applyPolicies(filter);
 
     // Get old document for hooks and policies
@@ -380,19 +430,21 @@ export class CollectionFacade<
     // Apply update timestamp
     const updateData = this.applyUpdateTimestamps(data as any);
 
-    // Run before hooks
+    // Run before hooks (SS collections don't have hooks)
     let finalUpdate = updateData;
-    if (this.collectionDef._meta.hooks.beforeUpdate) {
-      finalUpdate = await this.collectionDef._meta.hooks.beforeUpdate(
+    const hooks = (this.collectionDef._meta as any).hooks;
+    if (hooks?.beforeUpdate) {
+      finalUpdate = await hooks.beforeUpdate(
         this.ctx,
         oldDoc as any,
         updateData,
       );
     }
 
-    // Check policies
-    if (this.collectionDef._meta.policies.canUpdate) {
-      const allowed = await this.collectionDef._meta.policies.canUpdate(
+    // Check policies (SS collections don't have policies)
+    const policies = (this.collectionDef._meta as any).policies;
+    if (policies?.canUpdate) {
+      const allowed = await policies.canUpdate(
         this.ctx,
         oldDoc as any,
         finalUpdate,
@@ -402,11 +454,11 @@ export class CollectionFacade<
       }
     }
 
-    // Validate references
-    await this.relationHelper.validateReferences(finalUpdate as any);
-
-    // Process forward embeds (fetch and embed referenced data)
-    finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+    // Validate references and process embeds (skip for SS collections)
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      await this.relationHelper.validateReferences(finalUpdate as any);
+      finalUpdate = (await this.relationHelper.processForwardEmbeds(finalUpdate as any)) as any;
+    }
 
     // Update
     const result = await this.collection.findOneAndUpdate(
@@ -423,12 +475,14 @@ export class CollectionFacade<
     }
 
     // Run after hooks
-    if (this.collectionDef._meta.hooks.afterUpdate) {
-      await this.collectionDef._meta.hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
+    if (hooks?.afterUpdate) {
+      await hooks.afterUpdate(this.ctx, oldDoc as any, result as any);
     }
 
-    // Propagate reverse embeds if this collection is a source for any embeds
-    await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
+    // Propagate reverse embeds if this collection is a source for any embeds (skip for SS collections)
+    if (!isSSCollectionDefinition(this.collectionDef)) {
+      await this.propagateReverseEmbeds(result as TDoc, finalUpdate);
+    }
 
     return result as TDoc;
   }
@@ -440,6 +494,10 @@ export class CollectionFacade<
     return this.executeWithMiddlewares(
       'updateMany',
       async () => {
+        // Note: Updates are partial and won't match the full schema
+        // Skip Standard Schema validation for updates
+        await this.validateWithStandardSchema(data, { partial: true });
+
         const finalFilter = this.applyPolicies(filter);
         const updateData = this.applyUpdateTimestamps(data as any);
 
@@ -637,10 +695,11 @@ export class CollectionFacade<
    * Apply policy filters to a query filter
    */
   private applyPolicies(filter: Filter<TDoc>): Filter<TDoc> {
-    const policies = this.collectionDef._meta.policies;
+    // SS collections don't have policies
+    const policies = (this.collectionDef._meta as any).policies;
 
     // Apply read filter
-    if (policies.readFilter) {
+    if (policies?.readFilter) {
       const policyFilter = policies.readFilter(this.ctx);
       return {
         $and: [filter, policyFilter],
@@ -652,8 +711,15 @@ export class CollectionFacade<
 
   /**
    * Apply default values and generate auto-fields
+   * Note: For Standard Schema collections, defaults are handled by the schema itself
    */
   private async applyDefaults(data: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // Standard Schema collections handle defaults through the schema (e.g., Zod .default())
+    // Skip field-builder-specific default application
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      return { ...data };
+    }
+
     const schema = this.collectionDef._schema;
     const result = { ...data };
 
@@ -691,8 +757,15 @@ export class CollectionFacade<
 
   /**
    * Apply update timestamps (onUpdateNow fields)
+   * Note: For Standard Schema collections, timestamps must be handled differently (not supported yet)
    */
   private applyUpdateTimestamps(data: Record<string, unknown>): Record<string, unknown> {
+    // Standard Schema collections don't use field builders with onUpdateNow
+    // Timestamp support for SS collections would need a different mechanism
+    if (isSSCollectionDefinition(this.collectionDef)) {
+      return { ...data };
+    }
+
     const schema = this.collectionDef._schema;
     const result = { ...data };
 

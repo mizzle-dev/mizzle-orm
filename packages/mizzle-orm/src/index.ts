@@ -68,6 +68,10 @@ export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/i
 export type { StandardSchemaV1, IsStandardSchema, InferSSInput, InferSSOutput } from './types/standard-schema';
 export type { InferSSDocument, InferSSInsert, InferSSUpdate } from './types/standard-schema-inference';
 
+// Standard Schema validation errors
+export { SSValidationError } from './errors/validation-error';
+export type { ValidationIssue } from './errors/validation-error';
+
 // Validation
 export {
   generateDocumentSchema,
