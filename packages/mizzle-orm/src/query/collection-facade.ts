@@ -10,7 +10,7 @@ import type { Filter } from '../types/inference';
 import type { Middleware, MiddlewareContext, Operation } from '../types/middleware';
 import type { SSCollectionDefinition } from '../collection/from-standard-schema';
 import { isSSCollectionDefinition } from '../collection/from-standard-schema';
-import { SSValidationError } from '../errors/validation-error';
+import { SSValidationError, type ValidationIssue } from '../errors/validation-error';
 import { generatePublicId } from '../utils/public-id';
 import { RelationHelper } from './relations';
 import { RelationPipelineBuilder } from './relation-pipeline-builder';
@@ -96,13 +96,6 @@ export class CollectionFacade<
       return;
     }
 
-    // Skip validation for partial data (updates) since Standard Schema
-    // validates the entire structure but updates only contain changed fields
-    // Note: Future improvement could validate individual field types
-    if (options.partial) {
-      return;
-    }
-
     const ssCollectionDef = this.collectionDef as unknown as SSCollectionDefinition<any>;
     const schema = ssCollectionDef._schema;
 
@@ -111,6 +104,32 @@ export class CollectionFacade<
 
     // Check for validation issues
     if (result.issues && result.issues.length > 0) {
+      if (options.partial) {
+        // For partial validation (updates), only report issues for fields present in the data.
+        // This allows updates like { name: 'New Name' } without failing due to missing email.
+        // But if name itself is invalid, we catch it.
+        const updateKeys = typeof data === 'object' && data !== null
+          ? new Set(Object.keys(data as object))
+          : new Set<string>();
+
+        const relevantIssues = result.issues.filter((issue: ValidationIssue) => {
+          // If no path, it's a top-level structural issue - skip for partial validation
+          if (!issue.path || issue.path.length === 0) {
+            return false;
+          }
+
+          // Check if the first path segment is a key in our update data
+          const firstSegment = issue.path[0];
+          return updateKeys.has(String(firstSegment));
+        });
+
+        if (relevantIssues.length > 0) {
+          throw new SSValidationError(relevantIssues);
+        }
+        // No relevant issues for the fields we're updating - validation passed
+        return;
+      }
+
       throw new SSValidationError(result.issues);
     }
   }

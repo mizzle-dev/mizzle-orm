@@ -6,7 +6,7 @@ Started: 2026-02-11T21:23:00Z
 ## Codebase Patterns
 - Monorepo with turbo, main package at `packages/mizzle-orm`
 - Build: `pnpm build` → tsup (generates CJS/ESM/DTS)
-- Test: `pnpm test` → vitest (230+ tests)
+- Test: `pnpm test` → vitest (230+ tests, now 306)
 - Typecheck: `pnpm typecheck` → tsc --noEmit
 - Type files live in `src/types/`, tests in `src/<module>/__tests__/`
 - vitest expectTypeOf available for type-level assertions
@@ -14,6 +14,10 @@ Started: 2026-02-11T21:23:00Z
 - Uses node:test style expect/describe/it from vitest
 - Collection definitions use phantom types for `$inferDocument`, `$inferInsert`, `$inferUpdate` - assigned `null as any`, never accessed at runtime
 - Use `_brand` literal type to distinguish collection types (e.g., `'CollectionDefinition'` vs `'SSCollectionDefinition'`)
+- CollectionFacade methods need null-safe access for SS collections (no hooks/policies/relations)
+- Error classes: use `src/errors/` directory for custom error types
+- Standard Schema validation via `schema['~standard'].validate(data)` returns `{value}` or `{issues}`
+- Partial validation pattern: run full validate(), filter issues to only those with paths in update keys
 
 ---
 
@@ -78,4 +82,33 @@ Started: 2026-02-11T21:23:00Z
   - Realistic user/post collection examples with runtime validation demo
   - Edge cases: empty schema, deep nesting, unions, nullable, records
 - **Learnings:** Collection definitions use phantom types (`null as any`) for type inference helpers - they're never accessed at runtime. The `_brand` literal type pattern helps distinguish collection types.
+---
+
+## 2026-02-11 21:43 - US-004: Integrate Standard Schema validation into insert and update operations
+- Created `src/errors/validation-error.ts` with:
+  - `SSValidationError` class extending Error
+  - Contains `issues` array from Standard Schema validation result
+  - Helper methods: `getIssuesAtPath()`, `paths` getter, `toJSON()`
+  - Proper stack trace preservation with Error.captureStackTrace
+- Modified `src/query/collection-facade.ts` to validate using Standard Schema:
+  - Added `validateWithStandardSchema()` private method
+  - `create()` validates full data before inserting (throws SSValidationError on failure)
+  - `updateOne()`/`updateMany()` validate partial data:
+    - Run full schema validation, then filter issues to only those for fields present in update
+    - Allows partial updates (missing required fields) while rejecting invalid field values
+  - Added null-safe access for SS collections: hooks, policies, applyDefaults, applyUpdateTimestamps
+  - Skip relation helpers for SS collections (they don't have relations yet)
+- Exported `SSValidationError` and `ValidationIssue` from `src/index.ts`
+- Files changed: src/errors/validation-error.ts, src/query/collection-facade.ts, src/index.ts, src/query/__tests__/standard-schema-validation.test.ts
+- Tests: 28 tests covering:
+  - create() validates against Standard Schema
+  - create() rejects invalid email, empty name, negative age
+  - SSValidationError includes issues array, descriptive message, path info
+  - updateOne() allows partial updates (missing required fields OK)
+  - updateOne() rejects invalid values for name, age, enum
+  - updateMany() rejects invalid values in bulk updates
+  - Backward compatibility: non-SS collections skip validation
+  - SSValidationError helpers: paths getter, toJSON(), getIssuesAtPath()
+  - Optional fields, enum validation
+- **Learnings:** For partial validation, run full validation then filter issues by paths present in update data. This allows partial updates while catching invalid field values. Import `ValidationIssue` type from validation-error.ts for type safety in filter callbacks.
 ---

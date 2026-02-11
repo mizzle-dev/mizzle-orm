@@ -155,13 +155,10 @@ describe('Standard Schema Validation', () => {
       expect(updated?.name).toBe('Updated Name');
     });
 
-    // Note: Update validation is skipped because Standard Schema validates
-    // complete structures, but updates are partial by design.
-    // This is a known limitation - create() validates, updates don't.
-    it('should allow partial updates without full schema validation', async () => {
+    it('should allow partial updates without requiring all fields', async () => {
       // Partial updates only contain the fields being changed
-      // Standard Schema would reject this because email is missing
-      // We intentionally skip validation for updates
+      // Validation should NOT fail just because email is missing - 
+      // we only validate the fields present in the update
       const updated = await db().users.updateOne(
         { _id: existingUserId },
         { name: 'New Name' },
@@ -169,6 +166,54 @@ describe('Standard Schema Validation', () => {
 
       expect(updated?.name).toBe('New Name');
       expect(updated?.email).toBe('existing@example.com'); // Original value preserved
+    });
+
+    it('should reject invalid update values for name', async () => {
+      // Even in partial updates, the provided fields should be validated
+      await expect(
+        db().users.updateOne(
+          { _id: existingUserId },
+          { name: '' }, // Invalid: min length is 1
+        ),
+      ).rejects.toThrow(SSValidationError);
+    });
+
+    it('should reject invalid update values for age', async () => {
+      await expect(
+        db().users.updateOne(
+          { _id: existingUserId },
+          { age: -10 }, // Invalid: must be positive
+        ),
+      ).rejects.toThrow(SSValidationError);
+    });
+
+    it('should reject invalid enum values in update', async () => {
+      await expect(
+        db().users.updateOne(
+          { _id: existingUserId },
+          { role: 'superadmin' as any }, // Invalid: not in enum
+        ),
+      ).rejects.toThrow(SSValidationError);
+    });
+
+    it('should include issues array for invalid updates', async () => {
+      try {
+        await db().users.updateOne(
+          { _id: existingUserId },
+          { name: '' },
+        );
+        expect.fail('Should have thrown SSValidationError');
+      } catch (error) {
+        expect(error).toBeInstanceOf(SSValidationError);
+        const validationError = error as SSValidationError;
+        expect(validationError.issues).toBeDefined();
+        expect(validationError.issues.length).toBeGreaterThan(0);
+        // Issue should be for the 'name' field
+        const nameIssue = validationError.issues.find(
+          (issue) => issue.path && issue.path.includes('name'),
+        );
+        expect(nameIssue).toBeDefined();
+      }
     });
   });
 
@@ -184,11 +229,21 @@ describe('Standard Schema Validation', () => {
       expect(count).toBe(2);
     });
 
-    // Note: Like updateOne, updateMany also skips full schema validation
-    // because updates are partial by design
-    it('should allow partial bulk updates', async () => {
+    it('should allow partial bulk updates without requiring all fields', async () => {
       const count = await db().users.updateMany({}, { name: 'Bulk Updated' });
       expect(count).toBe(2);
+    });
+
+    it('should reject invalid values in bulk update', async () => {
+      await expect(
+        db().users.updateMany({}, { name: '' }), // Invalid: empty string
+      ).rejects.toThrow(SSValidationError);
+    });
+
+    it('should reject invalid age in bulk update', async () => {
+      await expect(
+        db().users.updateMany({}, { age: -5 }), // Invalid: must be positive
+      ).rejects.toThrow(SSValidationError);
     });
   });
 
