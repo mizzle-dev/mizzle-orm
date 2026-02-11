@@ -1,0 +1,53 @@
+# Progress Log
+Run: e3cd4a59-170f-4265-8334-d7048dd34df2
+Task: Add Standard Schema support to mizzle-orm
+Started: 2026-02-11T21:23:00Z
+
+## Codebase Patterns
+- Monorepo with turbo, main package at `packages/mizzle-orm`
+- Build: `pnpm build` → tsup (generates CJS/ESM/DTS)
+- Test: `pnpm test` → vitest (230+ tests)
+- Typecheck: `pnpm typecheck` → tsc --noEmit
+- Type files live in `src/types/`, tests in `src/<module>/__tests__/`
+- vitest expectTypeOf available for type-level assertions
+- Zod is already a dependency (zod ^4.1.12)
+- Uses node:test style expect/describe/it from vitest
+
+---
+
+## 2026-02-11 21:25 - US-001: Add Standard Schema spec package and create base types
+- Added `@standard-schema/spec` package as dependency
+- Created `src/types/standard-schema.ts` with:
+  - StandardSchemaV1 re-export
+  - IsStandardSchema<T> type guard
+  - InferSSInput<T> helper type
+  - InferSSOutput<T> helper type
+- Exported types from `src/index.ts`
+- Files changed: package.json, src/index.ts, src/types/standard-schema.ts, pnpm-lock.yaml
+- Tests: Created `src/types/__tests__/standard-schema.test.ts` with 17 tests covering:
+  - IsStandardSchema detection for Zod schemas vs plain objects
+  - InferSSInput extraction from various Zod schema types
+  - InferSSOutput extraction including transforms
+  - Runtime Standard Schema compliance verification
+  - vitest expectTypeOf assertions
+- **Learnings:** Zod 4.x fully implements Standard Schema v1 spec with `~standard` interface
+---
+
+## 2026-02-11 21:29 - US-002: Create type inference utilities for Standard Schema collections
+- Created `src/types/standard-schema-inference.ts` with:
+  - `InferSSDocument<T>` - adds _id: ObjectId to schema output, preserves existing _id if defined
+  - `InferSSInsert<T>` - returns schema input type (before transforms)
+  - `InferSSUpdate<T>` - returns Partial of document without _id (using output type)
+- Helper type `HasIdProperty<T>` to check if schema already defines _id
+- Exported types from `src/index.ts`
+- Files changed: src/types/standard-schema-inference.ts, src/types/__tests__/standard-schema-inference.test.ts, src/index.ts
+- Tests: Created 19 tests covering:
+  - InferSSDocument adding _id: ObjectId when not in schema
+  - InferSSDocument preserving custom _id types (string, explicit ObjectId)
+  - InferSSDocument with nested objects and transforms
+  - InferSSInsert returning input type (before transforms, with optionals for defaults)
+  - InferSSUpdate returning Partial without _id
+  - Integration tests with realistic schemas
+  - vitest expectTypeOf assertions
+- **Learnings:** Use `HasIdProperty<T>` conditional to check for existing _id before adding ObjectId; Update types use output (post-transform) while Insert uses input (pre-transform)
+---

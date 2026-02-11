@@ -7,6 +7,20 @@
 export { mizzle, defineSchema } from './orm/orm';
 export { mongoCollection } from './collection/collection';
 
+// Standard Schema collection factory
+export {
+  fromStandardSchema,
+  isSSCollectionDefinition,
+} from './collection/from-standard-schema';
+export type {
+  SSCollectionDefinition,
+  SSCollectionOptions,
+  SSCollectionMeta,
+  ExtractSSDocument,
+  ExtractSSInsert,
+  ExtractSSUpdate,
+} from './collection/from-standard-schema';
+
 // Relation factory functions
 export { lookup, reference, embed } from './collection/relations';
 
