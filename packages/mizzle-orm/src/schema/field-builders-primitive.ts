@@ -123,12 +123,12 @@ export class DateFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
   extends FieldBuilder<Date, TConfig, DateFieldBuilder<TConfig>>
   implements IDateFieldBuilder<TConfig>
 {
-  constructor() {
-    super(FieldType.DATE);
+  constructor(config: Partial<import('../types/field').FieldConfig<Date>> = {}) {
+    super(FieldType.DATE, config);
   }
 
   defaultNow(): DateFieldBuilder<TConfig & { hasDefaultNow: true; hasDefault: true }> {
-    return new FieldBuilder(this._config.type, {
+    return new DateFieldBuilder({
       ...this._config,
       defaultNow: true,
       defaultValue: () => new Date(),
@@ -136,7 +136,7 @@ export class DateFieldBuilder<TConfig extends FieldConfigState = EmptyConfig>
   }
 
   onUpdateNow(): DateFieldBuilder<TConfig & { hasOnUpdateNow: true }> {
-    return new FieldBuilder(this._config.type, {
+    return new DateFieldBuilder({
       ...this._config,
       onUpdateNow: true,
     }) as any;
