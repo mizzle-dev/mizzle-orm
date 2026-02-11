@@ -6,7 +6,7 @@ Started: 2026-02-11T21:23:00Z
 ## Codebase Patterns
 - Monorepo with turbo, main package at `packages/mizzle-orm`
 - Build: `pnpm build` → tsup (generates CJS/ESM/DTS)
-- Test: `pnpm test` → vitest (230+ tests, now 333)
+- Test: `pnpm test` → vitest (230+ tests, now 375)
 - Typecheck: `pnpm typecheck` → tsc --noEmit
 - Type files live in `src/types/`, tests in `src/<module>/__tests__/`
 - vitest expectTypeOf available for type-level assertions
@@ -158,4 +158,19 @@ Started: 2026-02-11T21:23:00Z
   - src/index.ts (export SSSoftDeleteConfig)
   - src/collection/__tests__/standard-schema-soft-delete.test.ts (22 new tests)
 - **Learnings:** Soft delete filtering needs to apply to all read queries (findById, findOne, findMany, count). The filter uses `$or` to match both null and non-existent fields to include non-deleted documents.
+---
+
+## 2026-02-11 22:09 - US-007: Add timestamp support for Standard Schema collections
+- Extended `SSCollectionOptions.timestamps` to accept `boolean | { createdAt?: string; updatedAt?: string }`
+- Added `SSTimestampsConfig` interface with normalized field names (defaults: 'createdAt', 'updatedAt')
+- Added `timestampsConfig` to `SSCollectionMeta` (normalized at factory time in fromStandardSchema)
+- Updated `CollectionFacade.applyDefaults` to set createdAt timestamp on insert for SS collections
+- Updated `CollectionFacade.applyUpdateTimestamps` to set updatedAt timestamp on update for SS collections
+- Exported `SSTimestampsConfig` from index.ts
+- Files changed: 
+  - src/collection/from-standard-schema.ts (SSTimestampsConfig, extended options, normalized config)
+  - src/query/collection-facade.ts (applyDefaults, applyUpdateTimestamps)
+  - src/index.ts (export SSTimestampsConfig)
+  - src/collection/__tests__/standard-schema-timestamps.test.ts (20 new tests)
+- **Learnings:** Timestamps follow the same normalization pattern as publicId and softDelete configs. createdAt is set on insert only if not already provided (allows override). updatedAt is always set on update operations.
 ---

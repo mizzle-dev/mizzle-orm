@@ -24,6 +24,21 @@ export type {
   ExtractSSUpdate,
 } from './collection/from-standard-schema';
 
+// Zod-specific collection factory
+export {
+  fromZod,
+  isZodSchema,
+  isZodCollectionDefinition,
+  extractZodDefaults,
+  applyZodDefaults,
+  validateWithZod,
+  ZodValidationError,
+} from './collection/from-zod';
+export type {
+  ZodCollectionDefinition,
+  ZodCollectionMeta,
+} from './collection/from-zod';
+
 // Relation factory functions
 export { lookup, reference, embed } from './collection/relations';
 
