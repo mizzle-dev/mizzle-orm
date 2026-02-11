@@ -8,15 +8,32 @@ import type { Middleware } from '../types/middleware';
 import type { InferSSDocument, InferSSInsert, InferSSUpdate } from '../types/standard-schema-inference';
 
 /**
+ * Normalized public ID configuration
+ */
+export interface SSPublicIdConfig {
+  /**
+   * Prefix for the public ID (e.g., 'user' → 'user_abc123')
+   */
+  prefix: string;
+
+  /**
+   * Field name to store the public ID (default: 'id')
+   */
+  field: string;
+}
+
+/**
  * Options for Standard Schema collections
  * Simplified options compared to field-builder collections since the schema handles validation
  */
 export interface SSCollectionOptions {
   /**
-   * Public ID prefix for human-readable IDs
-   * @example 'user' → 'user_abc123'
+   * Public ID configuration
+   * Can be a prefix string (uses 'id' as field name) or full config object
+   * @example 'user' → prefix 'user', field 'id' → 'user_abc123'
+   * @example { prefix: 'user', field: 'publicId' } → stores in 'publicId' field
    */
-  publicId?: string;
+  publicId?: string | { prefix: string; field?: string };
 
   /**
    * Enable soft delete (adds deletedAt field)
@@ -52,6 +69,11 @@ export interface SSCollectionMeta<T extends StandardSchemaV1<any, any>> {
    * Collection options
    */
   options: SSCollectionOptions;
+
+  /**
+   * Normalized public ID configuration (if publicId option was specified)
+   */
+  publicIdConfig?: SSPublicIdConfig;
 
   /**
    * Middlewares applied to this collection
@@ -193,11 +215,28 @@ export function fromStandardSchema<T extends StandardSchemaV1<any, any>>(
     );
   }
 
+  // Normalize publicId config
+  let publicIdConfig: SSPublicIdConfig | undefined;
+  if (options.publicId) {
+    if (typeof options.publicId === 'string') {
+      publicIdConfig = {
+        prefix: options.publicId,
+        field: 'id', // Default field name
+      };
+    } else {
+      publicIdConfig = {
+        prefix: options.publicId.prefix,
+        field: options.publicId.field || 'id', // Default field name if not specified
+      };
+    }
+  }
+
   // Build metadata
   const meta: SSCollectionMeta<T> = {
     name,
     schema,
     options,
+    publicIdConfig,
     middlewares: options.middlewares || [],
   };
 
