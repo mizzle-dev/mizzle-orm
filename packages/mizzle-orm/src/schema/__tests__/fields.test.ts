@@ -132,6 +132,22 @@ describe('Field Builders', () => {
       expect(field._config.onUpdateNow).toBe(true);
     });
 
+    it('should support defaultNow().onUpdateNow() chaining for timestamp fields', () => {
+      // Regression test: defaultNow() must return DateFieldBuilder so onUpdateNow() is available
+      // This pattern is common for updatedAt fields that need both default and auto-update behavior
+      const field = date().defaultNow().onUpdateNow();
+      expect(field._config.defaultNow).toBe(true);
+      expect(field._config.onUpdateNow).toBe(true);
+      expect(field._config.type).toBe(FieldType.DATE);
+    });
+
+    it('should support onUpdateNow().defaultNow() chaining in reverse order', () => {
+      // Ensure chaining works in either order
+      const field = date().onUpdateNow().defaultNow();
+      expect(field._config.defaultNow).toBe(true);
+      expect(field._config.onUpdateNow).toBe(true);
+    });
+
     it('should support soft delete flag', () => {
       const field = date().softDeleteFlag();
       expect(field._config.isSoftDeleteFlag).toBe(true);
