@@ -52,6 +52,7 @@ export type { IncludeConfig, NestedIncludeConfig, WithIncluded } from './types/i
 
 // Standard Schema integration
 export type { StandardSchemaV1, IsStandardSchema, InferSSInput, InferSSOutput } from './types/standard-schema';
+export type { InferSSDocument, InferSSInsert, InferSSUpdate } from './types/standard-schema-inference';
 
 // Validation
 export {
